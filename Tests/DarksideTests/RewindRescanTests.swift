@@ -1,13 +1,13 @@
 //
 //  XCTRewindRescanTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 3/25/21.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable type_body_length implicitly_unwrapped_optional
 class RewindRescanTests: XCTestCase {
@@ -29,7 +29,7 @@ class RewindRescanTests: XCTestCase {
     var expectedReorgHeight: BlockHeight = 665188
     var expectedRewindHeight: BlockHeight = 665188
     var reorgExpectation = XCTestExpectation(description: "reorg")
-    var network = ZcashNetworkBuilder.network(for: .mainnet)
+    var network = PirateNetworkBuilder.network(for: .mainnet)
 
     override func setUpWithError() throws {
         try super.setUpWithError()

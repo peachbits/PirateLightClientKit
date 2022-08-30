@@ -1,6 +1,6 @@
 //
 //  Stubs.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 18/09/2019.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -9,7 +9,7 @@
 import Foundation
 import GRPC
 import SwiftProtobuf
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable function_parameter_count identifier_name
 class AwfulLightWalletService: MockLightWalletService {

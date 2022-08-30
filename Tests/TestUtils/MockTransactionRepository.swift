@@ -1,12 +1,12 @@
 //
 //  MockTransactionRepository.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 12/6/19.
 //
 
 import Foundation
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 class MockTransactionRepository {
     enum Kind {
@@ -21,7 +21,7 @@ class MockTransactionRepository {
     var reference: [Kind] = []
     var sentTransactions: [ConfirmedTransaction] = []
     var receivedTransactions: [ConfirmedTransaction] = []
-    var network: ZcashNetwork
+    var network: PirateNetwork
 
     var allCount: Int {
         receivedCount + sentCount
@@ -31,7 +31,7 @@ class MockTransactionRepository {
         unminedCount: Int,
         receivedCount: Int,
         sentCount: Int,
-        network: ZcashNetwork
+        network: PirateNetwork
     ) {
         self.unminedCount = unminedCount
         self.receivedCount = receivedCount
@@ -80,7 +80,7 @@ class MockTransactionRepository {
             transactionIndex: index,
             raw: Data(),
             id: index,
-            value: Int.random(in: 1 ... ZcashSDK.zatoshiPerZEC),
+            value: Int.random(in: 1 ... PirateSDK.zatoshiPerARRR),
             memo: nil,
             rawTransactionId: Data()
         )
@@ -96,7 +96,7 @@ class MockTransactionRepository {
             transactionIndex: index,
             raw: Data(),
             id: index,
-            value: Int.random(in: 1 ... ZcashSDK.zatoshiPerZEC),
+            value: Int.random(in: 1 ... PirateSDK.zatoshiPerARRR),
             memo: nil,
             rawTransactionId: Data()
         )

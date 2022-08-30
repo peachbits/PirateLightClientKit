@@ -1,13 +1,13 @@
 //
 //  PagedTransactionRepositoryTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 12/6/19.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional
 class PagedTransactionRepositoryTests: XCTestCase {
@@ -20,7 +20,7 @@ class PagedTransactionRepositoryTests: XCTestCase {
             unminedCount: 5,
             receivedCount: 150,
             sentCount: 100,
-            network: ZcashNetworkBuilder.network(for: .testnet)
+            network: PirateNetworkBuilder.network(for: .testnet)
         )
         pagedTransactionRepository = PagedTransactionDAO(repository: transactionRepository)
     }

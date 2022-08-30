@@ -1,5 +1,5 @@
 # 0.14.0-beta
-- [#388] Integrate libzcashlc 0.0.3 to support v5 transaction parsing on NU5 activation
+- [#388] Integrate libpiratelc 0.0.3 to support v5 transaction parsing on NU5 activation
 # 0.13.1-beta
 - [#326] Load Checkpoint files from bundle.
 This is great news! now checkpoints are loaded from files on the bundle instead of
@@ -238,6 +238,6 @@ Synchronizer:
 
 change from computed variables to functions to allow throwing errors to clients
 
-https://github.com/zcash/ZcashLightClientKit/pull/84
+https://github.com/piratenetwork/PirateLightClientKit/pull/84
 
 

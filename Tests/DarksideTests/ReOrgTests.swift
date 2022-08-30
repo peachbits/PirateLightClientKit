@@ -1,13 +1,13 @@
 //
 //  ReOrgTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 3/23/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 /**
 basic reorg test.  Scan, get a reorg and then reach latest height.

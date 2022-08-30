@@ -23,7 +23,7 @@
 import GRPC
 import NIO
 import SwiftProtobuf
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 /// Usage: instantiate DarksideStreamerClient, then call methods of this protocol to make API calls.
 internal protocol DarksideStreamerClientProtocol: GRPCClient {

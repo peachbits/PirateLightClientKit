@@ -1,13 +1,13 @@
 //
 //  TransactionEnhancementTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 4/15/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional force_try
 class TransactionEnhancementTests: XCTestCase {

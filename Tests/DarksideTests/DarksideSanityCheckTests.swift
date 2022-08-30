@@ -1,6 +1,6 @@
 //
 //  DarksideSanityCheckTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 5/21/20.
 //
@@ -8,7 +8,7 @@
 import Foundation
 @testable import TestUtils
 import XCTest
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional
 class DarksideSanityCheckTests: XCTestCase {

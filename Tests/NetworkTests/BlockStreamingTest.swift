@@ -1,13 +1,13 @@
 //
 //  BlockStreamingTest.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 5/25/21.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable print_function_usage
 class BlockStreamingTest: XCTestCase {

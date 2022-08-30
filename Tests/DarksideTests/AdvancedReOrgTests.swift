@@ -1,13 +1,13 @@
 //
 //  AdvancedReOrgTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 5/14/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional force_unwrapping type_body_length
 class AdvancedReOrgTests: XCTestCase {

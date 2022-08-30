@@ -1,12 +1,12 @@
 //
 //  SubmitTransactionTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 12/10/19.
 //
 
 import XCTest
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 @testable import SwiftProtobuf
 
 // swiftlint:disable implicitly_unwrapped_optional

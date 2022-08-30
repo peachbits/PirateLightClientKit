@@ -1,13 +1,13 @@
 //
 //  NetworkUpgradeTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 10/30/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional type_body_length force_unwrapping
 class NetworkUpgradeTests: XCTestCase {
@@ -24,7 +24,7 @@ class NetworkUpgradeTests: XCTestCase {
 
     var birthday: BlockHeight = 1013250
     var coordinator: TestCoordinator!
-    var network = ZcashNetworkBuilder.network(for: .testnet)
+    var network = PirateNetworkBuilder.network(for: .testnet)
     
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -55,7 +55,7 @@ class NetworkUpgradeTests: XCTestCase {
         
         let firstSyncExpectation = XCTestExpectation(description: "first sync")
         
-        try coordinator.applyStaged(blockheight: activationHeight - ZcashSDK.defaultStaleTolerance)
+        try coordinator.applyStaged(blockheight: activationHeight - PirateSDK.defaultStaleTolerance)
         sleep(5)
         
         try coordinator.sync(completion: { _ in

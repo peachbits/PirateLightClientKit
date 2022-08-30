@@ -1,6 +1,6 @@
 //
 //  FakeService.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 10/23/19.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -8,7 +8,7 @@
 
 import Foundation
 import SwiftProtobuf
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 struct LightWalletServiceMockResponse: LightWalletServiceResponse {
     var errorCode: Int32

@@ -1,13 +1,13 @@
 //
 //  BalanceTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 4/28/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable type_body_length implicitly_unwrapped_optional force_unwrapping file_length
 class BalanceTests: XCTestCase {
@@ -21,7 +21,7 @@ class BalanceTests: XCTestCase {
     let defaultLatestHeight: BlockHeight = 663188
     let branchID = "2bb40e60"
     let chainName = "main"
-    let network: ZcashNetwork = DarksideWalletDNetwork()
+    let network: PirateNetwork = DarksideWalletDNetwork()
 
     var birthday: BlockHeight = 663150
     var sentTransactionExpectation = XCTestExpectation(description: "sent")

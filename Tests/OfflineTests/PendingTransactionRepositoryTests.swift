@@ -1,13 +1,13 @@
 //
 //  PendingTransactionRepositoryTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 11/27/19.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_try force_unwrapping implicitly_unwrapped_optional
 class PendingTransactionRepositoryTests: XCTestCase {

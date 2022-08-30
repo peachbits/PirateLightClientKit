@@ -25,6 +25,6 @@ Steps:
 - build the project
 - run tests
 - Create a new tag MAJOR.MIDDLE.MINOR{-betaX}
-- update the ZcashLightClientKit.podspec file with the correponding version.
+- update the PirateLightClientKit.podspec file with the correponding version.
 - run `pod lib lint --skip-tests --allow-warnings && pod trunk push --skip-tests --allow-warnings` to create pod version
 

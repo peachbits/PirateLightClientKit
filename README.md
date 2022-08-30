@@ -1,6 +1,6 @@
 # Zcash iOS Framework
 
-[![Build Status](https://travis-ci.org/zcash/ZcashLightClientKit.svg?branch=master)](https://travis-ci.org/zcash/ZcashLightClientKit)
+[![Build Status](https://travis-ci.org/piratenetwork/PirateLightClientKit.svg?branch=master)](https://travis-ci.org/piratenetwork/PirateLightClientKit)
 
 
 A Zcash Lightweight Client SDK for iOS
@@ -20,7 +20,7 @@ This is an alpha build and is currently under active development. Please be advi
 
 ## Swift Package Manager
 
-Add a package with the source "https://github.com/zcash/ZcashLightClientKit.git" and from version `0.13.0` onwards in either Xcode's GUI or in your `Package.swift` file.
+Add a package with the source "https://github.com/piratenetwork/PirateLightClientKit.git" and from version `0.13.0` onwards in either Xcode's GUI or in your `Package.swift` file.
 
 ### Beta version support for Xcode projects
 
@@ -28,7 +28,7 @@ If you want to include a beta version of `ZCashLightClientKit` in an Xcode proje
 
 ## Cocoapods Support
 
-Add `pod "ZcashLightClientKit", ~> "0.13.0-beta.2"` to the target you want to add the kit too.
+Add `pod "PirateLightClientKit", ~> "0.13.0-beta.2"` to the target you want to add the kit too.
 
 # Testing
 
@@ -59,7 +59,7 @@ The `LIGHTWALLETD_ADDRESS` environment variable can also be added to your shell 
 We advise setting this value as a secret variable on your CD/CI environment when possible.
 
 # Integrating with logging tools
-There are a lots of good logging tools for iOS. So we'll leave that choice to you. ZcashLightClientKit relies on a simple protocol to bubble up logs to client applications, which is called `Logger` (kudos for the naming originality...)
+There are a lots of good logging tools for iOS. So we'll leave that choice to you. PirateLightClientKit relies on a simple protocol to bubble up logs to client applications, which is called `Logger` (kudos for the naming originality...)
 ```
 public protocol Logger {
     
@@ -102,7 +102,7 @@ This project follows [semantic versioning](https://semver.org/) with pre-release
 
 This repo contains demos of isolated functionality that this SDK provides. They can be found in the examples folder.
 
-Examples can be found in the [Demo App](/Example/ZcashLightClientSample).
+Examples can be found in the [Demo App](/Example/PirateLightClientSample).
 
 # License
 

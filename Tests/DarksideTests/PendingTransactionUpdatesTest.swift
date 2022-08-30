@@ -1,13 +1,13 @@
 //
 //  PendingTransactionUpdatesTest.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 7/17/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional
 class PendingTransactionUpdatesTest: XCTestCase {

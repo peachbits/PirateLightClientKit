@@ -2,29 +2,29 @@
 import PackageDescription
 
 let package = Package(
-    name: "ZcashLightClientKit",
+    name: "PirateLightClientKit",
     platforms: [
         .iOS(.v12),
         .macOS(.v10_12)
     ],
     products: [
         .library(
-            name: "ZcashLightClientKit",
-            targets: ["ZcashLightClientKit"]
+            name: "PirateLightClientKit",
+            targets: ["PirateLightClientKit"]
         ),
     ],
     dependencies: [
         .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.0.0"),
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.13.0"),
-        .package(name:"libzcashlc", url: "https://github.com/zcash-hackworks/zcash-light-client-ffi.git", from: "0.0.3"),
+        .package(name:"libpiratelc", url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", from:"0.0.4"),
     ],
     targets: [
         .target(
-            name: "ZcashLightClientKit",
+            name: "PirateLightClientKit",
             dependencies: [
                 .product(name: "SQLite", package: "SQLite.swift"),
                 .product(name: "GRPC", package: "grpc-swift"),
-                .product(name: "libzcashlc", package: "libzcashlc"),
+                .product(name: "libpiratelc", package: "libpiratelc"),
             ],
             exclude: [
                 "Service/ProtoBuf/proto/compact_formats.proto",
@@ -36,7 +36,7 @@ let package = Package(
         ),
         .target(
             name: "TestUtils",
-            dependencies: ["ZcashLightClientKit"],
+            dependencies: ["PirateLightClientKit"],
             path: "Tests/TestUtils",
             exclude: [
                 "proto/darkside.proto"
@@ -44,20 +44,20 @@ let package = Package(
             resources: [
                 .copy("test_data.db"),
                 .copy("cache.db"),
-                .copy("ZcashSdk_Data.db"),
+                .copy("PirateSdk_Data.db"),
             ]
         ),
         .testTarget(
             name: "OfflineTests",
-            dependencies: ["ZcashLightClientKit", "TestUtils"]
+            dependencies: ["PirateLightClientKit", "TestUtils"]
         ),
         .testTarget(
             name: "NetworkTests",
-            dependencies: ["ZcashLightClientKit", "TestUtils"]
+            dependencies: ["PirateLightClientKit", "TestUtils"]
         ),
         .testTarget(
             name: "DarksideTests",
-            dependencies: ["ZcashLightClientKit", "TestUtils"]
+            dependencies: ["PirateLightClientKit", "TestUtils"]
         )
     ]
 )

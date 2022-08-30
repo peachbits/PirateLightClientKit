@@ -3,14 +3,14 @@
 
 excluded:
   - Pods
-  - ZcashLightClientKit/Service/ProtoBuf
-  - ZcashLightClientKitTests/proto
-  - ZcashLightClientKitTests/Constants.generated.swift
+  - PirateLightClientKit/Service/ProtoBuf
+  - PirateLightClientKitTests/proto
+  - PirateLightClientKitTests/Constants.generated.swift
 
 included:
-  - Example/ZcashLightClientSample/ZcashLIghtClientSample
-  - ZcashLightClientKit
-  - ZcashLightClientKitTests
+  - Example/PirateLightClientSample/ZcashLIghtClientSample
+  - PirateLightClientKit
+  - PirateLightClientKitTests
 
 disabled_rules:
   - notification_center_detachment

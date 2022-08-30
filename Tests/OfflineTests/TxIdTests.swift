@@ -1,6 +1,6 @@
 //
 //  TxIdTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 1/10/20.
 //

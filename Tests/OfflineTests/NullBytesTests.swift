@@ -1,19 +1,19 @@
 //
 //  NullBytesTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 6/5/20.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 class NullBytesTests: XCTestCase {
     let networkType = NetworkType.mainnet
 
     func testZaddrNullBytes() throws {
-        // this is a valid zAddr. if you send ZEC to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
+        // this is a valid zAddr. if you send ARRR to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
         let validZaddr = "zs1gqtfu59z20s9t20mxlxj86zpw6p69l0ev98uxrmlykf2nchj2dw8ny5e0l22kwmld2afc37gkfp"
         let zAddrWithNullBytes = "\(validZaddr)\0something else that makes the address invalid"
         
@@ -21,7 +21,7 @@ class NullBytesTests: XCTestCase {
     }
     
     func testTaddrNullBytes() throws {
-        // this is a valid tAddr. if you send ZEC to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
+        // this is a valid tAddr. if you send ARRR to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
         let validTAddr = "t1J5pTRzJi7j8Xw9VJTrPxPEkaigr69gKVT"
         let tAddrWithNullBytes = "\(validTAddr)\0fasdfasdf"
 
@@ -117,7 +117,7 @@ class NullBytesTests: XCTestCase {
     }
     
     func testCheckNullBytes() throws {
-        // this is a valid zAddr. if you send ZEC to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
+        // this is a valid zAddr. if you send ARRR to it, you will be contributing to Human Rights Foundation. see more ways to help at https://paywithz.cash/
         let validZaddr = "zs1gqtfu59z20s9t20mxlxj86zpw6p69l0ev98uxrmlykf2nchj2dw8ny5e0l22kwmld2afc37gkfp"
 
         XCTAssertFalse(validZaddr.containsCStringNullBytesBeforeStringEnding())

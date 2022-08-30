@@ -1,6 +1,6 @@
 //
-//  ZcashLightClientKitTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests.swift
+//  PirateLightClientKitTests
 //
 //  Created by Jack Grigg on 5/8/19.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -9,10 +9,10 @@
 import XCTest
 import GRPC
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional force_try force_unwrapping
-class ZcashLightClientKitTests: XCTestCase {
+class PirateLightClientKitTests: XCTestCase {
     var latestBlockHeight: BlockHeight!
     var service: LightWalletGRPCService!
 

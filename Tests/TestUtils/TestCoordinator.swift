@@ -1,12 +1,12 @@
 //
 //  TestCoordinator.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 4/29/20.
 //
 
 import Foundation
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 /**
 This is the TestCoordinator
@@ -43,12 +43,12 @@ class TestCoordinator {
     var service: DarksideWalletService
     var spendingKeys: [String]?
     var databases: TemporaryTestDatabases
-    let network: ZcashNetwork
+    let network: PirateNetwork
     convenience init(
         seed: String,
         walletBirthday: BlockHeight,
         channelProvider: ChannelProvider,
-        network: ZcashNetwork
+        network: PirateNetwork
     ) throws {
         let derivationTool = DerivationTool(networkType: network.networkType)
 
@@ -88,7 +88,7 @@ class TestCoordinator {
         unifiedViewingKey: UnifiedViewingKey,
         walletBirthday: BlockHeight,
         channelProvider: ChannelProvider,
-        network: ZcashNetwork
+        network: PirateNetwork
     ) throws {
         self.spendingKey = spendingKey
         self.birthday = walletBirthday
@@ -290,7 +290,7 @@ enum TestSynchronizerBuilder {
         spendingKey: String,
         unifiedViewingKey: UnifiedViewingKey,
         walletBirthday: WalletBirthday,
-        network: ZcashNetwork,
+        network: PirateNetwork,
         loggerProxy: Logger? = nil
     ) throws -> (spendingKeys: [String]?, synchronizer: SDKSynchronizer) {
         let initializer = Initializer(
@@ -317,8 +317,8 @@ enum TestSynchronizerBuilder {
             dataDb: initializer.dataDbURL,
             downloadBatchSize: 100,
             retries: 5,
-            maxBackoffInterval: ZcashSDK.defaultMaxBackOffInterval,
-            rewindDistance: ZcashSDK.defaultRewindDistance,
+            maxBackoffInterval: PirateSDK.defaultMaxBackOffInterval,
+            rewindDistance: PirateSDK.defaultRewindDistance,
             walletBirthday: walletBirthday.height,
             saplingActivation: lowerBoundHeight,
             network: network
@@ -362,7 +362,7 @@ enum TestSynchronizerBuilder {
         outputParamsURL: URL,
         seedBytes: [UInt8],
         walletBirthday: WalletBirthday,
-        network: ZcashNetwork,
+        network: PirateNetwork,
         loggerProxy: Logger? = nil
     ) throws -> (spendingKeys: [String]?, synchronizer: SDKSynchronizer) {
         guard

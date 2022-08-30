@@ -1,11 +1,11 @@
 import XCTest
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 class BirthdayTests: XCTestCase {
     func test_BirthdayGetsMostRecentCheckpointBelowIt_Testnet() throws {
       let birthday = WalletBirthday.birthday(
         with: 1530003,
-        network: ZcashNetworkBuilder.network(for: .testnet)
+        network: PirateNetworkBuilder.network(for: .testnet)
       )
 
       let expected = WalletBirthday(
@@ -21,7 +21,7 @@ class BirthdayTests: XCTestCase {
   func test_BirthdayGetsMostRecentCheckpointBelowIt_Mainnet() throws {
     let birthday = WalletBirthday.birthday(
       with: 1340004,
-      network: ZcashNetworkBuilder.network(for: .mainnet)
+      network: PirateNetworkBuilder.network(for: .mainnet)
     )
 
     let expected = WalletBirthday(
@@ -37,7 +37,7 @@ class BirthdayTests: XCTestCase {
   func test_startBirthdayIsGivenIfTooLow_Testnet() throws {
     let birthday = WalletBirthday.birthday(
       with: 4,
-      network: ZcashNetworkBuilder.network(for: .testnet)
+      network: PirateNetworkBuilder.network(for: .testnet)
     )
 
     let expected = WalletBirthday(
@@ -53,7 +53,7 @@ class BirthdayTests: XCTestCase {
   func test_startBirthdayIsGivenIfTooLow_Mainnet() throws {
     let birthday = WalletBirthday.birthday(
       with: 4,
-      network: ZcashNetworkBuilder.network(for: .mainnet)
+      network: PirateNetworkBuilder.network(for: .mainnet)
     )
 
     let expected = WalletBirthday(

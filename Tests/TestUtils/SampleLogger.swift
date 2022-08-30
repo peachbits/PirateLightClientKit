@@ -1,17 +1,17 @@
 //
 //  SampleLogger.swift
-//  ZcashLightClientSample
+//  PirateLightClientSample
 //
 //  Created by Francisco Gindre on 3/9/20.
 //  Copyright © 2020 Electric Coin Company. All rights reserved.
 //
 
 import Foundation
-import ZcashLightClientKit
+import PirateLightClientKit
 import os
 
 // swiftlint:disable force_unwrapping print_function_usage
-class SampleLogger: ZcashLightClientKit.Logger {
+class SampleLogger: PirateLightClientKit.Logger {
     enum LogLevel: Int {
         case debug
         case error

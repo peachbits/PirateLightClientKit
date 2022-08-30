@@ -1,12 +1,12 @@
 //
 //  MemoTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 4/23/20.
 //
 
 import XCTest
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_unwrapping print_function_usage
 class MemoTests: XCTestCase {
@@ -61,9 +61,9 @@ class MemoTests: XCTestCase {
     */
     
     /**
-    Real text:  "Here's gift from the Zec Fairy @ ECC!"
+    Real text:  "Here's gift from the Arrr Fairy @ ECC!"
     */
-    static let validMemoDataExpectedString = "Here's gift from the Zec Fairy @ ECC!"
+    static let validMemoDataExpectedString = "Here's gift from the Arrr Fairy @ ECC!"
     
     static let validMemoDataBase64 =
         // swiftlint:disable:next line_length

@@ -1,6 +1,6 @@
 //
 //  TestDbBuilder.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 10/14/19.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -8,7 +8,7 @@
 
 import Foundation
 import SQLite
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 struct TestDbHandle {
     var originalDb: URL
@@ -70,7 +70,7 @@ class TestDbBuilder {
     }
     
     static func prepopulatedDataDbProvider() -> ConnectionProvider? {
-        guard let url = Bundle.module.url(forResource: "ZcashSdk_Data", withExtension: "db") else { return nil }
+        guard let url = Bundle.module.url(forResource: "PirateSdk_Data", withExtension: "db") else { return nil }
         let provider = SimpleConnectionProvider(path: url.absoluteString, readonly: true)
 
         return provider

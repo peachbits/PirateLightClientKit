@@ -1,6 +1,6 @@
 //
 //  ShieldFundsTests.swift
-//  ZcashLightClientSample
+//  PirateLightClientSample
 //
 //  Created by Francisco Gindre on 4/12/22.
 //  Copyright © 2022 Electric Coin Company. All rights reserved.
@@ -8,7 +8,7 @@
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 class ShieldFundsTests: XCTestCase {
     // TODO: Parameterize this from environment?
     // swiftlint:disable:next line_length

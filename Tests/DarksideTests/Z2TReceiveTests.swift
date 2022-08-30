@@ -1,13 +1,13 @@
 //
 //  Z2TReceiveTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 8/4/21.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_unwrapping implicitly_unwrapped_optional
 class Z2TReceiveTests: XCTestCase {

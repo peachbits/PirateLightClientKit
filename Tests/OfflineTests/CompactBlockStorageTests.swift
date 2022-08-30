@@ -1,6 +1,6 @@
 //
 //  CompactBlockStorageTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 10/13/19.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -11,9 +11,9 @@ import Foundation
 import XCTest
 
 // swiftlint:disable force_try
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 class CompactBlockStorageTests: XCTestCase {
-    let network = ZcashNetworkBuilder.network(for: .testnet)
+    let network = PirateNetworkBuilder.network(for: .testnet)
     var compactBlockDao: CompactBlockRepository = try! TestDbBuilder.inMemoryCompactBlockStorage()
 
     func testEmptyStorage() {

@@ -1,6 +1,6 @@
 //
 //  BlockScanOperationTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 10/17/19.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -9,7 +9,7 @@
 import XCTest
 import SQLite
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional force_try force_unwrapping print_function_usage
 class BlockScanOperationTests: XCTestCase {
@@ -26,10 +26,10 @@ class BlockScanOperationTests: XCTestCase {
 
     var walletBirthDay = WalletBirthday.birthday(
         with: 1386000,
-        network: ZcashNetworkBuilder.network(for: .testnet)
+        network: PirateNetworkBuilder.network(for: .testnet)
     )
     
-    var network = ZcashNetworkBuilder.network(for: .testnet)
+    var network = PirateNetworkBuilder.network(for: .testnet)
     var blockRepository: BlockRepository!
 
     override func setUp() {

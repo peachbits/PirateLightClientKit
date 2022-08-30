@@ -1,13 +1,13 @@
 //
 //  BlockBatchValidationTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 6/17/21.
 //
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_try type_body_length
 class BlockBatchValidationTests: XCTestCase {
@@ -29,7 +29,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
 
     func testBranchIdFailure() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
             service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
@@ -85,7 +85,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testBranchNetworkMismatchFailure() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
             service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
@@ -142,7 +142,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testBranchNetworkTypeWrongFailure() throws {
-        let network = ZcashNetworkBuilder.network(for: .testnet)
+        let network = PirateNetworkBuilder.network(for: .testnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
             service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
@@ -199,7 +199,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testSaplingActivationHeightMismatch() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
             service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
@@ -260,7 +260,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testResultIsWait() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         
         let expectedLatestHeight = BlockHeight(1210000)
         let service = MockLightWalletService(
@@ -342,7 +342,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testResultProcessNew() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         let expectedLatestHeight = BlockHeight(1230000)
         let service = MockLightWalletService(
             latestBlockHeight: expectedLatestHeight,
@@ -427,7 +427,7 @@ class BlockBatchValidationTests: XCTestCase {
     }
     
     func testResultProcessorFinished() throws {
-        let network = ZcashNetworkBuilder.network(for: .mainnet)
+        let network = PirateNetworkBuilder.network(for: .mainnet)
         let expectedLatestHeight = BlockHeight(1230000)
         let service = MockLightWalletService(
             latestBlockHeight: expectedLatestHeight,

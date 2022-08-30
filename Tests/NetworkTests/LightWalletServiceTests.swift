@@ -1,6 +1,6 @@
 //
 //  LightWalletServiceTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 18/09/2019.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -8,12 +8,12 @@
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 import GRPC
 
 // swiftlint:disable implicitly_unwrapped_optional force_unwrapping
 class LightWalletServiceTests: XCTestCase {
-    let network: ZcashNetwork = ZcashNetworkBuilder.network(for: .testnet)
+    let network: PirateNetwork = PirateNetworkBuilder.network(for: .testnet)
 
     var service: LightWalletService!
     var channel: Channel!

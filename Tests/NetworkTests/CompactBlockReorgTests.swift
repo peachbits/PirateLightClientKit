@@ -1,6 +1,6 @@
 //
 //  CompactBlockReorgTests.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 11/13/19.
 //
@@ -8,13 +8,13 @@
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable implicitly_unwrapped_optional force_try
 class CompactBlockReorgTests: XCTestCase {
     let processorConfig = CompactBlockProcessor.Configuration.standard(
-        for: ZcashNetworkBuilder.network(for: .testnet),
-        walletBirthday: ZcashNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight
+        for: PirateNetworkBuilder.network(for: .testnet),
+        walletBirthday: PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight
     )
     var processor: CompactBlockProcessor!
     var downloadStartedExpect: XCTestExpectation!
@@ -24,8 +24,8 @@ class CompactBlockReorgTests: XCTestCase {
     var startedValidatingNotificationExpectation: XCTestExpectation!
     var idleNotificationExpectation: XCTestExpectation!
     var reorgNotificationExpectation: XCTestExpectation!
-    let network = ZcashNetworkBuilder.network(for: .testnet)
-    let mockLatestHeight = ZcashNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight + 2000
+    let network = PirateNetworkBuilder.network(for: .testnet)
+    let mockLatestHeight = PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight + 2000
     
     override func setUpWithError() throws {
         try super.setUpWithError()

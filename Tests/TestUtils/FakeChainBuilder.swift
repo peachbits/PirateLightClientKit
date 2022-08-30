@@ -1,12 +1,12 @@
 //
 //  FakeChainBuilder.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 5/21/20.
 //
 
 import Foundation
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 enum FakeChainBuilderError: Error {
     case fakeHexDataConversionFailed
@@ -82,7 +82,7 @@ enum FakeChainBuilder {
 
         try darksideWallet.useDataset(testnetCanopyStartBlock)
         try darksideWallet.stageBlocksCreate(from: birthday + 1, count: length)
-        try darksideWallet.stageTransaction(from: testnetPreCanopyTx, at: networkActivationHeight - ZcashSDK.expiryOffset)
+        try darksideWallet.stageTransaction(from: testnetPreCanopyTx, at: networkActivationHeight - PirateSDK.expiryOffset)
     }
     
     static func buildChainPostActivationFunds(darksideWallet: DarksideWalletService, birthday: BlockHeight, networkActivationHeight: BlockHeight, length: Int) throws {
@@ -110,7 +110,7 @@ enum FakeChainBuilder {
             length: length
         )
         
-        try darksideWallet.stageTransaction(from: testnetPostCanopyTx, at: networkActivationHeight + ZcashSDK.expiryOffset)
+        try darksideWallet.stageTransaction(from: testnetPostCanopyTx, at: networkActivationHeight + PirateSDK.expiryOffset)
     }
     
     static func buildTxUrl(for id: String) -> String {

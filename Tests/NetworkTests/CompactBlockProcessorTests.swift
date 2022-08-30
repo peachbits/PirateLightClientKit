@@ -1,6 +1,6 @@
 //
 //  CompactBlockProcessorTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Francisco Gindre on 20/09/2019.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -8,13 +8,13 @@
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_try implicitly_unwrapped_optional
 class CompactBlockProcessorTests: XCTestCase {
     let processorConfig = CompactBlockProcessor.Configuration.standard(
-        for: ZcashNetworkBuilder.network(for: .testnet),
-        walletBirthday: ZcashNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight
+        for: PirateNetworkBuilder.network(for: .testnet),
+        walletBirthday: PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight
     )
     var processor: CompactBlockProcessor!
     var downloadStartedExpect: XCTestExpectation!
@@ -23,8 +23,8 @@ class CompactBlockProcessorTests: XCTestCase {
     var startedScanningNotificationExpectation: XCTestExpectation!
     var startedValidatingNotificationExpectation: XCTestExpectation!
     var idleNotificationExpectation: XCTestExpectation!
-    let network = ZcashNetworkBuilder.network(for: .testnet)
-    let mockLatestHeight = ZcashNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight + 2000
+    let network = PirateNetworkBuilder.network(for: .testnet)
+    let mockLatestHeight = PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight + 2000
     
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -158,7 +158,7 @@ class CompactBlockProcessorTests: XCTestCase {
         )
         
         // Test mid-range
-        latestDownloadedHeight = BlockHeight(network.constants.saplingActivationHeight + ZcashSDK.DefaultBatchSize)
+        latestDownloadedHeight = BlockHeight(network.constants.saplingActivationHeight + PirateSDK.DefaultBatchSize)
         latestBlockchainHeight = BlockHeight(network.constants.saplingActivationHeight + 1000)
         
         expectedBatchRange = CompactBlockRange(uncheckedBounds: (lower: latestDownloadedHeight + 1, upper: latestBlockchainHeight))

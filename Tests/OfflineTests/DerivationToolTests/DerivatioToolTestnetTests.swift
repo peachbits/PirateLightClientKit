@@ -1,13 +1,13 @@
 //
 //  DerivatioToolTestnetTests.swift
-//  ZcashLightClientKit-Unit-DerivationToolTests
+//  PirateLightClientKit-Unit-DerivationToolTests
 //
 //  Created by Francisco Gindre on 7/26/21.
 //
 // swift-format-ignore-file
 
 import XCTest
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 class DerivatioToolTestnetTests: XCTestCase {
     var seedPhrase = "still champion voice habit trend flight survey between bitter process artefact blind carbon truly provide dizzy crush flush breeze blouse charge solid fish spread" //TODO: Parameterize this from environment?

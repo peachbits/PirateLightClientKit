@@ -1,6 +1,6 @@
 //
 //  ZcashRustBackendTests.swift
-//  ZcashLightClientKitTests
+//  PirateLightClientKitTests
 //
 //  Created by Jack Grigg on 28/06/2019.
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
@@ -8,7 +8,7 @@
 
 import XCTest
 @testable import TestUtils
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 
 // swiftlint:disable force_unwrapping implicitly_unwrapped_optional force_try
 class ZcashRustBackendTests: XCTestCase {

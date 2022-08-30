@@ -1,12 +1,12 @@
 //
 //  DarkSideWalletService.swift
-//  ZcashLightClientKit-Unit-Tests
+//  PirateLightClientKit-Unit-Tests
 //
 //  Created by Francisco Gindre on 3/23/20.
 //
 
 import Foundation
-@testable import ZcashLightClientKit
+@testable import PirateLightClientKit
 import GRPC
 
 enum DarksideDataset: String {
@@ -230,27 +230,27 @@ enum DarksideWalletDConstants: NetworkConstants {
     }
 
     static var defaultDataDbName: String {
-        ZcashSDKMainnetConstants.defaultDataDbName
+        PirateSDKMainnetConstants.defaultDataDbName
     }
 
     static var defaultCacheDbName: String {
-        ZcashSDKMainnetConstants.defaultCacheDbName
+        PirateSDKMainnetConstants.defaultCacheDbName
     }
 
     static var defaultPendingDbName: String {
-        ZcashSDKMainnetConstants.defaultPendingDbName
+        PirateSDKMainnetConstants.defaultPendingDbName
     }
 
     static var defaultDbNamePrefix: String {
-        ZcashSDKMainnetConstants.defaultDbNamePrefix
+        PirateSDKMainnetConstants.defaultDbNamePrefix
     }
 
     static var feeChangeHeight: BlockHeight {
-        ZcashSDKMainnetConstants.feeChangeHeight
+        PirateSDKMainnetConstants.feeChangeHeight
     }
 }
 
-class DarksideWalletDNetwork: ZcashNetwork {
+class DarksideWalletDNetwork: PirateNetwork {
     var constants: NetworkConstants.Type = DarksideWalletDConstants.self
     var networkType = NetworkType.mainnet
 }

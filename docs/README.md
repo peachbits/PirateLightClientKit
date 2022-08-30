@@ -23,7 +23,7 @@ rm -rf docs/rtd # clear the existing docs
 
 # the generate the new docs
 jazzy \
---module ZcashLightClientKit \
+--module PirateLightClientKit \
 --swift-build-tool spm \
 --build-tool-arguments -Xswiftc,-swift-version,-Xswiftc,5 --output docs/rtd
 

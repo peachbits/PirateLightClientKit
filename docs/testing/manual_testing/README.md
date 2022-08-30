@@ -25,14 +25,14 @@ make
 ./lightwalletd --log-file /dev/stdout --darkside-very-insecure  --darkside-timeout 1000 --gen-cert-very-insecure --data-dir . --no-tls-very-insecure
 ````
 
-5. Open Demo App workspace `ZcashLightClientSample.xcworkspace`
+5. Open Demo App workspace `PirateLightClientSample.xcworkspace`
 6. Go to the manage schemes section
-7. Verify that the `ZcashLightClientKit-Unit-Tests` scheme is shown and shared
+7. Verify that the `PirateLightClientKit-Unit-Tests` scheme is shown and shared
 8. Run the `AdvancedReOrgTests` test suite
 
 ## Running DerivationTool tests
 
-1. open Demo App workspace `ZcashLightClientSample.xcworkspace`
+1. open Demo App workspace `PirateLightClientSample.xcworkspace`
 2. go to the manage schemes section
-3. verify that the `ZcashLightClientKit-Unit-DerivationToolTests` scheme is shown and shared
-6. run the `ZcashLightClientKit-Unit-DerivationToolTests` test suite
+3. verify that the `PirateLightClientKit-Unit-DerivationToolTests` scheme is shown and shared
+6. run the `PirateLightClientKit-Unit-DerivationToolTests` test suite
