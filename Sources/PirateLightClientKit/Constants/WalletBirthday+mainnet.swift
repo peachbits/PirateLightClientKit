@@ -9,9 +9,9 @@ import Foundation
 
 extension WalletBirthday {
   static let mainnetMin = WalletBirthday(
-    height: 419_200,
-    hash: "00000000025a57200d898ac7f21e26bf29028bbe96ec46e05b2c17cc9db9e4f3",
-    time: 1540779337,
+    height: 152_855,
+    hash: "00000001500922f7db74b9d82b745f84ebec28b0d5ea00d2a8af53207f3a63c1",
+    time: 1544836549,
     tree: "000000"
   )
 
