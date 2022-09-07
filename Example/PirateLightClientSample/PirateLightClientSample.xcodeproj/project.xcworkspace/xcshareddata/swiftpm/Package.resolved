@@ -60,8 +60,8 @@
         "repositoryURL": "https://github.com/piratenetwork/pirate-light-client-ffi.git",
         "state": {
           "branch": null,
-          "revision": "e55ff1d7f294d8961800212db83e4a1e8bb8a2e6",
-          "version": "0.0.4"
+          "revision": "21ac7b770f705b96f477c88378c51ba0279f9a25",
+          "version": "0.0.5"
         }
       },
       {

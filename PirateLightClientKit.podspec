@@ -22,7 +22,7 @@ Pod::Spec.new do |s|
     s.ios.deployment_target = '12.0'
     s.dependency 'gRPC-Swift', '~> 1.0'
     s.dependency 'SQLite.swift', '~> 0.12.2'
-    s.dependency 'libpiratelc', '0.0.4'
+    s.dependency 'libpiratelc', '0.0.5'
     s.static_framework = true
 
 end

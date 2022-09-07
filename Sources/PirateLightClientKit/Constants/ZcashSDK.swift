@@ -179,7 +179,7 @@ public extension NetworkConstants {
     static func defaultFee(for height: BlockHeight = BlockHeight.max) -> Int64 {
         guard  height >= feeChangeHeight else { return 10_000 }
 
-        return 1_000
+        return 10_000
     }
 }
 
@@ -209,7 +209,7 @@ public class PirateSDKMainnetConstants: NetworkConstants {
 
     public static var defaultDbNamePrefix = "PirateSdk_mainnet_"
 
-    public static var feeChangeHeight: BlockHeight = 1_077_550
+    public static var feeChangeHeight: BlockHeight = 1_000_000_000
 }
 
 public class PirateSDKTestnetConstants: NetworkConstants {
@@ -241,5 +241,5 @@ public class PirateSDKTestnetConstants: NetworkConstants {
     /**
     Estimated height where wallets are supposed to change the fee
     */
-    public static var feeChangeHeight: BlockHeight = 1_028_500
+    public static var feeChangeHeight: BlockHeight = 1_000_000_000
 }
