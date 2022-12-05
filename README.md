@@ -24,11 +24,11 @@ Add a package with the source "https://github.com/piratenetwork/PirateLightClien
 
 ### Beta version support for Xcode projects
 
-If you want to include a beta version of `ZCashLightClientKit` in an Xcode project e.g `0.13.0-beta.2` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
+If you want to include a beta version of `PirateLightClientKit` in an Xcode project e.g `0.14.2-beta` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
 
 ## Cocoapods Support
 
-Add `pod "PirateLightClientKit", ~> "0.13.0-beta.2"` to the target you want to add the kit too.
+Add `pod "PirateLightClientKit", ~> "0.14.2-beta"` to the target you want to add the kit too.
 
 # Testing
 
@@ -62,17 +62,17 @@ We advise setting this value as a secret variable on your CD/CI environment when
 There are a lots of good logging tools for iOS. So we'll leave that choice to you. PirateLightClientKit relies on a simple protocol to bubble up logs to client applications, which is called `Logger` (kudos for the naming originality...)
 ```
 public protocol Logger {
-    
+
     func debug(_ message: String, file: String, function: String, line: Int)
-    
+
     func info(_ message: String, file: String, function: String, line: Int)
-    
+
     func event(_ message: String, file: String, function: String, line: Int)
-    
+
     func warn(_ message: String, file: String, function: String, line: Int)
-    
+
     func error(_ message: String, file: String, function: String, line: Int)
-    
+
 }
 ```
 To enable logging you need to do 2 simple steps:
@@ -84,7 +84,7 @@ For more details look the Sample App's `AppDelegate` code.
 # Swiftlint
 
 We don't like reinventing the wheel, so we gently borrowed swift lint rules from AirBnB which we find pretty cool and reasonable.
-  
+
 # Versioning
 
 This project follows [semantic versioning](https://semver.org/) with pre-release versions. An example of a valid version number is `1.0.4-alpha11` denoting the `11th` iteration of the `alpha` pre-release of version `1.0.4`. Stable releases, such as `1.0.4` will not contain any pre-release identifiers. Pre-releases include the following, in order of stability: `alpha`, `beta`, `rc`. Version codes offer a numeric representation of the build name that always increases. The first six significant digits represent the major, minor and patch number (two digits each) and the last 3 significant digits represent the pre-release identifier. The first digit of the identifier signals the build type. Lastly, each new build has a higher version code than all previous builds. The following table breaks this down:
