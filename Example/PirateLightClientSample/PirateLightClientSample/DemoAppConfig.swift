@@ -11,7 +11,7 @@ import PirateLightClientKit
 import MnemonicSwift
 // swiftlint:disable line_length force_try
 enum DemoAppConfig {
-    static var host = PirateSDK.isMainnet ? "lightd.pirate.black" : "testlightd.pirate.black"
+    static var host = PirateSDK.isMainnet ? "lightd1.pirate.black" : "testlightd.pirate.black"
     static var port: Int = 443
     static var birthdayHeight: BlockHeight = PirateSDK.isMainnet ? 850000 : 1386000
 
