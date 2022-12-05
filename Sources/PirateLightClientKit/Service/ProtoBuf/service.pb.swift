@@ -396,7 +396,7 @@ struct GetAddressUtxosReplyList {
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
-fileprivate let _protobuf_package = "cash.z.wallet.sdk.rpc"
+fileprivate let _protobuf_package = "pirate.wallet.sdk.rpc"
 
 extension BlockID: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".BlockID"

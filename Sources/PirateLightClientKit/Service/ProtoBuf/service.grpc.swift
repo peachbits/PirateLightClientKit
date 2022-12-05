@@ -115,7 +115,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<ChainSpec, BlockID> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLatestBlock",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetLatestBlock",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -132,7 +132,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<BlockID, CompactBlock> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetBlock",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetBlock",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -151,7 +151,7 @@ extension CompactTxStreamerClientProtocol {
     handler: @escaping (CompactBlock) -> Void
   ) -> ServerStreamingCall<BlockRange, CompactBlock> {
     return self.makeServerStreamingCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetBlockRange",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetBlockRange",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions,
       handler: handler
@@ -169,7 +169,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<TxFilter, RawTransaction> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTransaction",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetTransaction",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -186,7 +186,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<RawTransaction, SendResponse> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/SendTransaction",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/SendTransaction",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -205,7 +205,7 @@ extension CompactTxStreamerClientProtocol {
     handler: @escaping (RawTransaction) -> Void
   ) -> ServerStreamingCall<TransparentAddressBlockFilter, RawTransaction> {
     return self.makeServerStreamingCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTaddressTxids",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetTaddressTxids",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions,
       handler: handler
@@ -223,7 +223,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<AddressList, Balance> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTaddressBalance",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetTaddressBalance",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -241,7 +241,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> ClientStreamingCall<Address, Balance> {
     return self.makeClientStreamingCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTaddressBalanceStream",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetTaddressBalanceStream",
       callOptions: callOptions ?? self.defaultCallOptions
     )
   }
@@ -267,7 +267,7 @@ extension CompactTxStreamerClientProtocol {
     handler: @escaping (CompactTx) -> Void
   ) -> ServerStreamingCall<Exclude, CompactTx> {
     return self.makeServerStreamingCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetMempoolTx",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetMempoolTx",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions,
       handler: handler
@@ -288,7 +288,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<BlockID, TreeState> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTreeState",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetTreeState",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -305,7 +305,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<GetAddressUtxosArg, GetAddressUtxosReplyList> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetAddressUtxos",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetAddressUtxos",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -324,7 +324,7 @@ extension CompactTxStreamerClientProtocol {
     handler: @escaping (GetAddressUtxosReply) -> Void
   ) -> ServerStreamingCall<GetAddressUtxosArg, GetAddressUtxosReply> {
     return self.makeServerStreamingCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetAddressUtxosStream",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetAddressUtxosStream",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions,
       handler: handler
@@ -342,7 +342,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<Empty, LightdInfo> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -359,7 +359,7 @@ extension CompactTxStreamerClientProtocol {
     callOptions: CallOptions? = nil
   ) -> UnaryCall<Duration, PingResponse> {
     return self.makeUnaryCall(
-      path: "/cash.z.wallet.sdk.rpc.CompactTxStreamer/Ping",
+      path: "/pirate.wallet.sdk.rpc.CompactTxStreamer/Ping",
       request: request,
       callOptions: callOptions ?? self.defaultCallOptions
     )
@@ -370,7 +370,7 @@ internal final class CompactTxStreamerClient: CompactTxStreamerClientProtocol {
   internal let channel: GRPCChannel
   internal var defaultCallOptions: CallOptions
 
-  /// Creates a client for the cash.z.wallet.sdk.rpc.CompactTxStreamer service.
+  /// Creates a client for the pirate.wallet.sdk.rpc.CompactTxStreamer service.
   ///
   /// - Parameters:
   ///   - channel: `GRPCChannel` to the service host.
