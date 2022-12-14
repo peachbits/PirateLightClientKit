@@ -24,11 +24,11 @@ Add a package with the source "https://github.com/piratenetwork/PirateLightClien
 
 ### Beta version support for Xcode projects
 
-If you want to include a beta version of `PirateLightClientKit` in an Xcode project e.g `0.14.2-beta` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
+If you want to include a beta version of `PirateLightClientKit` in an Xcode project e.g `0.14.3-beta` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
 
 ## Cocoapods Support
 
-Add `pod "PirateLightClientKit", ~> "0.14.2-beta"` to the target you want to add the kit too.
+Add `pod "PirateLightClientKit", ~> "0.14.3-beta"` to the target you want to add the kit too.
 
 # Testing
 

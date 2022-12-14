@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
     s.name             = 'PirateLightClientKit'
-    s.version          = '0.14.2-beta'
+    s.version          = '0.14.3-beta'
     s.summary          = 'Pirate Light Client wallet SDK for iOS'
 
     s.description      = <<-DESC
