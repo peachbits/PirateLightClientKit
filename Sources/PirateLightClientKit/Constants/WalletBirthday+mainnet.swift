@@ -15,6 +15,6 @@ extension WalletBirthday {
     tree: "000000"
   )
 
-  static let mainnetCheckpointDirectory = Bundle.module.bundleURL.appendingPathComponent("saplingtree-checkpoints/mainnet/")
+  static let mainnetCheckpointDirectory = Bundle.module.bundleURL.appendingPathComponent("piratesaplingtree-checkpoints/mainnet/")
 
 }
