@@ -14,8 +14,8 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.0.0"),
-        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.13.0"),
+        .package(url: "https://github.com/grpc/grpc-swift.git", revision: "9e464a75079928366aa7041769a271fac89271bf"),
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", revision: "9af51e2edf491c0ea632e369a6566e09b65aa333"),
         .package(name:"libpiratelc", url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", from:"0.0.5"),
     ],
     targets: [
