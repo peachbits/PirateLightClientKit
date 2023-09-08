@@ -7,9 +7,9 @@
 
 import Foundation
 
-struct EncodedTransaction: SignedTransactionEntity {
-    var transactionId: Data
-    var raw: Data?
+struct EncodedTransaction {
+    let transactionId: Data
+    let raw: Data
 }
 
 extension EncodedTransaction: Hashable {

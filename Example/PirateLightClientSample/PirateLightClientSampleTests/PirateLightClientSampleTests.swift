@@ -9,9 +9,9 @@
 import XCTest
 @testable import PirateLightClientKit
 @testable import PirateLightClientSample
+
 // this test exists only for travis ci to build the demo app
 class PirateLightClientSampleTests: XCTestCase {
-
     func testExample() throws {
         XCTAssertTrue(true)
     }

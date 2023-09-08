@@ -9,41 +9,29 @@
 import Foundation
 
 /**
-Wrapper for the Rust backend. This class basically represents all the Rust-wallet
-capabilities and the supporting data required to exercise those abilities.
-*/
-public enum InitializerError: Error {
-    case cacheDbInitFailed
-    case dataDbInitFailed
-    case accountInitFailed
-    case falseStart
-    case invalidViewingKey(key: String)
-}
-
-/**
 Represents a lightwallet instance endpoint to connect to
 */
 public struct LightWalletEndpoint {
-    public var host: String
-    public var port: Int
-    public var secure: Bool
-    public var singleCallTimeoutInMillis: Int64
-    public var streamingCallTimeoutInMillis: Int64
-    
+    public let host: String
+    public let port: Int
+    public let secure: Bool
+    public let singleCallTimeoutInMillis: Int64
+    public let streamingCallTimeoutInMillis: Int64
+
     /**
     initializes a LightWalletEndpoint
     - Parameters:
         - address: a String containing the host address
         - port: string with the port of the host address
         - secure: true if connecting through TLS. Default value is true
-        - singleCallTimeoutInMillis: timeout for single calls in Milliseconds
-        - streamingCallTimeoutInMillis: timeout for streaming calls in Milliseconds
+        - singleCallTimeoutInMillis: timeout for single calls in Milliseconds. Default 30 seconds
+        - streamingCallTimeoutInMillis: timeout for streaming calls in Milliseconds. Default 100 seconds
     */
     public init(
         address: String,
         port: Int,
         secure: Bool = true,
-        singleCallTimeoutInMillis: Int64 = 10000,
+        singleCallTimeoutInMillis: Int64 = 30000,
         streamingCallTimeoutInMillis: Int64 = 100000
     ) {
         self.host = address
@@ -54,304 +42,392 @@ public struct LightWalletEndpoint {
     }
 }
 
+/// This contains URLs from which can the SDK fetch files that contain sapling parameters.
+/// Use `SaplingParamsSourceURL.default` when initilizing the SDK.
+public struct SaplingParamsSourceURL {
+    public let spendParamFileURL: URL
+    public let outputParamFileURL: URL
+
+    public static var `default`: SaplingParamsSourceURL {
+        return SaplingParamsSourceURL(spendParamFileURL: PirateSDK.spendParamFileURL, outputParamFileURL: PirateSDK.outputParamFileURL)
+    }
+}
+
+/// This identifies different instances of the synchronizer. It is usefull when the client app wants to support multiple wallets (with different
+/// seeds) in one app. If the client app support only one wallet then it doesn't have to care about alias atall.
+///
+/// When custom alias is used to create instance of the synchronizer then paths to all resources (databases, storages...) are updated accordingly to
+/// be sure that each instance is using unique paths to resources.
+///
+/// Custom alias identifiers shouldn't contain any confidential information because it may be logged. It also should have a reasonable length and
+/// form. It will be part of the paths to the files (databases, storage...)
+///
+/// IMPORTANT: Always use `default` alias for one of the instances of the synchronizer.
+public enum ZcashSynchronizerAlias: Hashable {
+    case `default`
+    case custom(String)
+}
+
+extension ZcashSynchronizerAlias: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .`default`:
+            return "default"
+        case let .custom(alias):
+            return "c_\(alias)"
+        }
+    }
+}
+
 /**
 Wrapper for all the Rust backend functionality that does not involve processing blocks. This
 class initializes the Rust backend and the supporting data required to exercise those abilities.
 The [cash.z.wallet.sdk.block.CompactBlockProcessor] handles all the remaining Rust backend
 functionality, related to processing blocks.
 */
+// swiftlint:disable:next type_body_length
 public class Initializer {
-    private(set) var rustBackend: ZcashRustBackendWelding.Type
-    private(set) var alias: String
-    private(set) var endpoint: LightWalletEndpoint
-    
-    private var lowerBoundHeight: BlockHeight
-    private(set) var cacheDbURL: URL
-    private(set) var dataDbURL: URL
-    private(set) var pendingDbURL: URL
-    private(set) var spendParamsURL: URL
-    private(set) var outputParamsURL: URL
-    private(set) var lightWalletService: LightWalletService
-    private(set) var transactionRepository: TransactionRepository
-    private(set) var accountRepository: AccountRepository
-    private(set) var storage: CompactBlockStorage
-    private(set) var downloader: CompactBlockDownloader
-    private(set) var network: PirateNetwork
-    private(set) public var viewingKeys: [UnifiedViewingKey]
-    private(set) public var walletBirthday: WalletBirthday
+    struct URLs {
+        let fsBlockDbRoot: URL
+        let dataDbURL: URL
+        let spendParamsURL: URL
+        let outputParamsURL: URL
+    }
 
-    /**
-    Constructs the Initializer
-    - Parameters:
-        - cacheDbURL: location of the compact blocks cache db
-        - dataDbURL: Location of the data db
-        - pendingDbURL: location of the pending transactions database
-        - endpoint: the endpoint representing the lightwalletd instance you want to point to
-        - spendParamsURL: location of the spend parameters
-        - outputParamsURL: location of the output parameters
-    */
-    convenience public init (
-        cacheDbURL: URL,
+    public enum InitializationResult {
+        case success
+        case seedRequired
+    }
+
+    public enum LoggingPolicy {
+        case `default`(OSLogger.LogLevel)
+        case custom(Logger)
+        case noLogging
+    }
+
+    // This is used to uniquely identify instance of the SDKSynchronizer. It's used when checking if the Alias is already used or not.
+    let id = UUID()
+
+    let container: DIContainer
+    let alias: ZcashSynchronizerAlias
+    let endpoint: LightWalletEndpoint
+    let fsBlockDbRoot: URL
+    let dataDbURL: URL
+    let spendParamsURL: URL
+    let outputParamsURL: URL
+    let saplingParamsSourceURL: SaplingParamsSourceURL
+    let lightWalletService: LightWalletService
+    let transactionRepository: TransactionRepository
+    let accountRepository: AccountRepository
+    let storage: CompactBlockRepository
+    let blockDownloaderService: BlockDownloaderService
+    let network: PirateNetwork
+    let logger: Logger
+    let rustBackend: ZcashRustBackendWelding
+
+    /// The effective birthday of the wallet based on the height provided when initializing and the checkpoints available on this SDK.
+    ///
+    /// This contains valid value only after `initialize` function is called.
+    public private(set) var walletBirthday: BlockHeight
+
+    /// The purpose of this to migrate from cacheDb to fsBlockDb
+    private let cacheDbURL: URL?
+
+    /// Error that can be created when updating URLs according to alias. If this error is created then it is thrown from `SDKSynchronizer.prepare()`
+    /// or `SDKSynchronizer.wipe()`.
+    var urlsParsingError: ZcashError?
+
+    /// Constructs the Initializer and migrates an old cacheDb to the new file system block cache if a `cacheDbURL` is provided.
+    /// - Parameters:
+    ///  - cacheDbURL: previous location of the cacheDb. If you don't know what a cacheDb is and you are adopting this SDK for the first time then
+    ///                just pass `nil` here.
+    ///  - fsBlockDbRoot: location of the compact blocks cache
+    ///  - dataDbURL: Location of the data db
+    ///  - endpoint: the endpoint representing the lightwalletd instance you want to point to
+    ///  - spendParamsURL: location of the spend parameters
+    ///  - outputParamsURL: location of the output parameters
+    convenience public init(
+        cacheDbURL: URL?,
+        fsBlockDbRoot: URL,
         dataDbURL: URL,
-        pendingDbURL: URL,
         endpoint: LightWalletEndpoint,
         network: PirateNetwork,
         spendParamsURL: URL,
         outputParamsURL: URL,
-        viewingKeys: [UnifiedViewingKey],
-        walletBirthday: BlockHeight,
-        alias: String = "",
-        loggerProxy: Logger? = nil
+        saplingParamsSourceURL: SaplingParamsSourceURL,
+        alias: ZcashSynchronizerAlias = .default,
+        loggingPolicy: LoggingPolicy = .default(.debug)
     ) {
-        let lwdService = LightWalletGRPCService(endpoint: endpoint)
-        
-        self.init(
-            rustBackend: ZcashRustBackend.self,
-            lowerBoundHeight: walletBirthday,
-            network: network,
+        let container = DIContainer()
+
+        // It's not possible to fail from constructor. Technically it's possible but it can be pain for the client apps to handle errors thrown
+        // from constructor. So `parsingError` is just stored in initializer and `SDKSynchronizer.prepare()` throw this error if it exists.
+        let (updatedURLs, parsingError) = Self.setup(
+            container: container,
             cacheDbURL: cacheDbURL,
+            fsBlockDbRoot: fsBlockDbRoot,
             dataDbURL: dataDbURL,
-            pendingDbURL: pendingDbURL,
             endpoint: endpoint,
-            service: lwdService,
-            repository: TransactionRepositoryBuilder.build(dataDbURL: dataDbURL),
-            accountRepository: AccountRepositoryBuilder.build(
-                dataDbURL: dataDbURL,
-                readOnly: true,
-                caching: true
-            ),
-            storage: CompactBlockStorage(url: cacheDbURL, readonly: false),
+            network: network,
             spendParamsURL: spendParamsURL,
             outputParamsURL: outputParamsURL,
-            viewingKeys: viewingKeys,
-            walletBirthday: walletBirthday,
+            saplingParamsSourceURL: saplingParamsSourceURL,
             alias: alias,
-            loggerProxy: loggerProxy
+            loggingPolicy: loggingPolicy
+        )
+
+        self.init(
+            container: container,
+            cacheDbURL: cacheDbURL,
+            urls: updatedURLs,
+            endpoint: endpoint,
+            network: network,
+            saplingParamsSourceURL: saplingParamsSourceURL,
+            alias: alias,
+            urlsParsingError: parsingError,
+            loggingPolicy: loggingPolicy
         )
     }
-    
-    /**
-    Internal for dependency injection purposes
-    */
-    init(
-        rustBackend: ZcashRustBackendWelding.Type,
-        lowerBoundHeight: BlockHeight,
-        network: PirateNetwork,
-        cacheDbURL: URL,
+
+    /// Internal for dependency injection purposes.
+    convenience init(
+        container: DIContainer,
+        cacheDbURL: URL?,
+        fsBlockDbRoot: URL,
         dataDbURL: URL,
-        pendingDbURL: URL,
         endpoint: LightWalletEndpoint,
-        service: LightWalletService,
-        repository: TransactionRepository,
-        accountRepository: AccountRepository,
-        storage: CompactBlockStorage,
+        network: PirateNetwork,
         spendParamsURL: URL,
         outputParamsURL: URL,
-        viewingKeys: [UnifiedViewingKey],
-        walletBirthday: BlockHeight,
-        alias: String = "",
-        loggerProxy: Logger? = nil
+        saplingParamsSourceURL: SaplingParamsSourceURL,
+        alias: ZcashSynchronizerAlias = .default,
+        loggingPolicy: LoggingPolicy = .default(.debug)
     ) {
-        logger = loggerProxy
-        self.rustBackend = rustBackend
-        self.lowerBoundHeight = lowerBoundHeight
-        self.cacheDbURL = cacheDbURL
-        self.dataDbURL = dataDbURL
-        self.pendingDbURL = pendingDbURL
-        self.endpoint = endpoint
-        self.spendParamsURL = spendParamsURL
-        self.outputParamsURL = outputParamsURL
-        self.alias = alias
-        self.lightWalletService = service
-        self.transactionRepository = repository
-        self.accountRepository = accountRepository
-        self.storage = storage
-        self.downloader = CompactBlockDownloader(service: service, storage: storage)
-        self.viewingKeys = viewingKeys
-        self.walletBirthday = WalletBirthday.birthday(with: walletBirthday, network: network)
-        self.network = network
-    }
-    
-    /**
-    Initialize the wallet with the given seed and return the related private keys for each
-    account specified or null if the wallet was previously initialized and block data exists on
-    disk. When this method returns null, that signals that the wallet will need to retrieve the
-    private keys from its own secure storage. In other words, the private keys are only given out
-    once for each set of database files. Subsequent calls to [initialize] will only load the Rust
-    library and return null.
-     
-    'compactBlockCache.db' and 'transactionData.db' files are created by this function (if they
-    do not already exist). These files can be given a prefix for scenarios where multiple wallets
-
-    - Parameters:
-        - viewingKeys: Extended Full Viewing Keys to initialize the DBs with
-    */
-    public func initialize() throws {
-        do {
-            try storage.createTable()
-        } catch {
-            throw InitializerError.cacheDbInitFailed
-        }
-        
-        do {
-            try rustBackend.initDataDb(dbData: dataDbURL, networkType: network.networkType)
-        } catch RustWeldingError.dataDbNotEmpty {
-            // this is fine
-        } catch {
-            throw InitializerError.dataDbInitFailed
-        }
-    
-        do {
-            try rustBackend.initBlocksTable(
-                dbData: dataDbURL,
-                height: Int32(walletBirthday.height),
-                hash: walletBirthday.hash,
-                time: walletBirthday.time,
-                saplingTree: walletBirthday.tree,
-                networkType: network.networkType
-            )
-        } catch RustWeldingError.dataDbNotEmpty {
-            // this is fine
-        } catch {
-            throw InitializerError.dataDbInitFailed
-        }
-        
-        let lastDownloaded = (try? downloader.storage.latestHeight()) ?? walletBirthday.height
-        // resume from last downloaded block
-        lowerBoundHeight = max(walletBirthday.height, lastDownloaded)
- 
-        do {
-            guard try rustBackend.initAccountsTable(
-                dbData: dataDbURL,
-                uvks: viewingKeys,
-                networkType: network.networkType
-            ) else {
-                throw rustBackend.lastError() ?? InitializerError.accountInitFailed
-            }
-        } catch RustWeldingError.dataDbNotEmpty {
-            // this is fine
-        } catch {
-            throw rustBackend.lastError() ?? InitializerError.accountInitFailed
-        }
-        
-        let migrationManager = MigrationManager(
-            cacheDbConnection: SimpleConnectionProvider(path: cacheDbURL.path),
-            dataDbConnection: SimpleConnectionProvider(path: dataDbURL.path),
-            pendingDbConnection: SimpleConnectionProvider(path: pendingDbURL.path),
-            networkType: self.network.networkType
+        // It's not possible to fail from constructor. Technically it's possible but it can be pain for the client apps to handle errors thrown
+        // from constructor. So `parsingError` is just stored in initializer and `SDKSynchronizer.prepare()` throw this error if it exists.
+        let (updatedURLs, parsingError) = Self.setup(
+            container: container,
+            cacheDbURL: cacheDbURL,
+            fsBlockDbRoot: fsBlockDbRoot,
+            dataDbURL: dataDbURL,
+            endpoint: endpoint,
+            network: network,
+            spendParamsURL: spendParamsURL,
+            outputParamsURL: outputParamsURL,
+            saplingParamsSourceURL: saplingParamsSourceURL,
+            alias: alias,
+            loggingPolicy: loggingPolicy
         )
-        
-        try migrationManager.performMigration(uvks: viewingKeys)
+
+        self.init(
+            container: container,
+            cacheDbURL: cacheDbURL,
+            urls: updatedURLs,
+            endpoint: endpoint,
+            network: network,
+            saplingParamsSourceURL: saplingParamsSourceURL,
+            alias: alias,
+            urlsParsingError: parsingError,
+            loggingPolicy: loggingPolicy
+        )
     }
-    
-    /**
-    get address from the given account index
-    - Parameter account:  the index of the account
-    */
-    public func getAddress(index account: Int = 0) -> String? {
-        try? accountRepository.findBy(account: account)?.address
+
+    private init(
+        container: DIContainer,
+        cacheDbURL: URL?,
+        urls: URLs,
+        endpoint: LightWalletEndpoint,
+        network: PirateNetwork,
+        saplingParamsSourceURL: SaplingParamsSourceURL,
+        alias: ZcashSynchronizerAlias,
+        urlsParsingError: ZcashError?,
+        loggingPolicy: LoggingPolicy = .default(.debug)
+    ) {
+        self.container = container
+        self.cacheDbURL = cacheDbURL
+        self.rustBackend = container.resolve(ZcashRustBackendWelding.self)
+        self.fsBlockDbRoot = urls.fsBlockDbRoot
+        self.dataDbURL = urls.dataDbURL
+        self.endpoint = endpoint
+        self.spendParamsURL = urls.spendParamsURL
+        self.outputParamsURL = urls.outputParamsURL
+        self.saplingParamsSourceURL = saplingParamsSourceURL
+        self.alias = alias
+        self.lightWalletService = container.resolve(LightWalletService.self)
+        self.transactionRepository = container.resolve(TransactionRepository.self)
+        self.accountRepository = AccountRepositoryBuilder.build(
+            dataDbURL: urls.dataDbURL,
+            readOnly: true,
+            caching: true,
+            logger: container.resolve(Logger.self)
+        )
+        self.storage = container.resolve(CompactBlockRepository.self)
+        self.blockDownloaderService = container.resolve(BlockDownloaderService.self)
+        self.network = network
+        self.walletBirthday = Checkpoint.birthday(with: 0, network: network).height
+        self.urlsParsingError = urlsParsingError
+        self.logger = container.resolve(Logger.self)
+    }
+
+    private static func makeLightWalletServiceFactory(endpoint: LightWalletEndpoint) -> LightWalletServiceFactory {
+        return LightWalletServiceFactory(endpoint: endpoint)
+    }
+
+    // swiftlint:disable:next function_parameter_count
+    private static func setup(
+        container: DIContainer,
+        cacheDbURL: URL?,
+        fsBlockDbRoot: URL,
+        dataDbURL: URL,
+        endpoint: LightWalletEndpoint,
+        network: PirateNetwork,
+        spendParamsURL: URL,
+        outputParamsURL: URL,
+        saplingParamsSourceURL: SaplingParamsSourceURL,
+        alias: ZcashSynchronizerAlias,
+        loggingPolicy: LoggingPolicy = .default(.debug)
+    ) -> (URLs, ZcashError?) {
+        let urls = URLs(
+            fsBlockDbRoot: fsBlockDbRoot,
+            dataDbURL: dataDbURL,
+            spendParamsURL: spendParamsURL,
+            outputParamsURL: outputParamsURL
+        )
+
+        // It's not possible to fail from constructor. Technically it's possible but it can be pain for the client apps to handle errors thrown
+        // from constructor. So `parsingError` is just stored in initializer and `SDKSynchronizer.prepare()` throw this error if it exists.
+        let (updatedURLs, parsingError) = Self.tryToUpdateURLs(with: alias, urls: urls)
+
+        Dependencies.setup(
+            in: container,
+            urls: updatedURLs,
+            alias: alias,
+            networkType: network.networkType,
+            endpoint: endpoint,
+            loggingPolicy: loggingPolicy
+        )
+
+        return (updatedURLs, parsingError)
+    }
+
+    /// Try to update URLs with `alias`.
+    ///
+    /// If the `default` alias is used then the URLs are changed at all.
+    /// If the `custom("anotherInstance")` is used then last path component or the URL is updated like this:
+    /// - /some/path/to.file -> /some/path/c_anotherInstance_to.file
+    /// - /some/path/to/directory -> /some/path/to/c_anotherInstance_directory
+    ///
+    /// If any of the URLs can't be parsed then returned error isn't nil.
+    static func tryToUpdateURLs(
+        with alias: ZcashSynchronizerAlias,
+        urls: URLs
+    ) -> (URLs, ZcashError?) {
+        let updatedURLsResult = Self.updateURLs(with: alias, urls: urls)
+
+        let parsingError: ZcashError?
+        let updatedURLs: URLs
+        switch updatedURLsResult {
+        case let .success(updated):
+            parsingError = nil
+            updatedURLs = updated
+        case let .failure(error):
+            parsingError = error
+            // When failure happens just use original URLs because something must be used. But this shouldn't be a problem because
+            // `SDKSynchronizer.prepare()` handles this error. And the SDK won't work if it isn't switched from `unprepared` state.
+            updatedURLs = urls
+        }
+
+        return (updatedURLs, parsingError)
+    }
+
+    private static func updateURLs(
+        with alias: ZcashSynchronizerAlias,
+        urls: URLs
+    ) -> Result<URLs, ZcashError> {
+        guard let updatedFsBlockDbRoot = urls.fsBlockDbRoot.updateLastPathComponent(with: alias) else {
+            return .failure(.initializerCantUpdateURLWithAlias(urls.fsBlockDbRoot))
+        }
+
+        guard let updatedDataDbURL = urls.dataDbURL.updateLastPathComponent(with: alias) else {
+            return .failure(.initializerCantUpdateURLWithAlias(urls.dataDbURL))
+        }
+
+        guard let updatedSpendParamsURL = urls.spendParamsURL.updateLastPathComponent(with: alias) else {
+            return .failure(.initializerCantUpdateURLWithAlias(urls.spendParamsURL))
+        }
+
+        guard let updateOutputParamsURL = urls.outputParamsURL.updateLastPathComponent(with: alias) else {
+            return .failure(.initializerCantUpdateURLWithAlias(urls.outputParamsURL))
+        }
+
+        return .success(
+            URLs(
+                fsBlockDbRoot: updatedFsBlockDbRoot,
+                dataDbURL: updatedDataDbURL,
+                spendParamsURL: updatedSpendParamsURL,
+                outputParamsURL: updateOutputParamsURL
+            )
+        )
+    }
+
+    /// Initialize the wallet. The ZIP-32 seed bytes can optionally be passed to perform
+    /// database migrations. most of the times the seed won't be needed. If they do and are
+    /// not provided this will fail with `InitializationResult.seedRequired`. It could
+    /// be the case that this method is invoked by a wallet that does not contain the seed phrase
+    /// and is view-only, or by a wallet that does have the seed but the process does not have the
+    /// consent of the OS to fetch the keys from the secure storage, like on background tasks.
+    ///
+    /// 'cache.db' and 'data.db' files are created by this function (if they
+    /// do not already exist). These files can be given a prefix for scenarios where multiple wallets
+    ///
+    /// - Parameter seed: ZIP-32 Seed bytes for the wallet that will be initialized
+    /// - Throws: `InitializerError.dataDbInitFailed` if the creation of the dataDb fails
+    /// `InitializerError.accountInitFailed` if the account table can't be initialized.
+    func initialize(with seed: [UInt8]?, viewingKeys: [UnifiedFullViewingKey], walletBirthday: BlockHeight) async throws -> InitializationResult {
+        try await storage.create()
+
+        if case .seedRequired = try await rustBackend.initDataDb(seed: seed) {
+            return .seedRequired
+        }
+
+        let checkpoint = Checkpoint.birthday(with: walletBirthday, network: network)
+        do {
+            try await rustBackend.initBlocksTable(
+                height: Int32(checkpoint.height),
+                hash: checkpoint.hash,
+                time: checkpoint.time,
+                saplingTree: checkpoint.saplingTree
+            )
+        } catch ZcashError.rustInitBlocksTableDataDbNotEmpty {
+            // this is fine
+        } catch {
+            throw error
+        }
+
+        self.walletBirthday = checkpoint.height
+
+        do {
+            try await rustBackend.initAccountsTable(ufvks: viewingKeys)
+        } catch ZcashError.rustInitAccountsTableDataDbNotEmpty {
+            // this is fine
+        } catch {
+            throw error
+        }
+
+        return .success
     }
 
     /**
-    get (unverified) balance from the given account index
-    - Parameter account: the index of the account
+    checks if the provided address is a valid sapling address
     */
-    public func getBalance(account index: Int = 0) -> Int64 {
-        rustBackend.getBalance(dbData: dataDbURL, account: Int32(index), networkType: network.networkType)
-    }
-    
-    /**
-    get verified balance from the given account index
-    - Parameter account: the index of the account
-    */
-    public func getVerifiedBalance(account index: Int = 0) -> Int64 {
-        rustBackend.getVerifiedBalance(dbData: dataDbURL, account: Int32(index), networkType: network.networkType)
-    }
-    
-    /**
-    checks if the provided address is a valid shielded zAddress
-    */
-    public func isValidShieldedAddress(_ address: String) -> Bool {
-        (try? rustBackend.isValidShieldedAddress(address, networkType: network.networkType)) ?? false
+    public func isValidSaplingAddress(_ address: String) -> Bool {
+        DerivationTool(networkType: network.networkType).isValidSaplingAddress(address)
     }
 
     /**
     checks if the provided address is a transparent zAddress
     */
     public func isValidTransparentAddress(_ address: String) -> Bool {
-        (try? rustBackend.isValidTransparentAddress(address, networkType: network.networkType)) ?? false
-    }
-    
-    func isSpendParameterPresent() -> Bool {
-        FileManager.default.isReadableFile(atPath: self.spendParamsURL.path)
-    }
-    
-    func isOutputParameterPresent() -> Bool {
-        FileManager.default.isReadableFile(atPath: self.outputParamsURL.path)
-    }
-    
-    func downloadParametersIfNeeded(result: @escaping (Result<Bool, Error>) -> Void) {
-        let spendParameterPresent = isSpendParameterPresent()
-        let outputParameterPresent = isOutputParameterPresent()
-        
-        if spendParameterPresent && outputParameterPresent {
-            result(.success(true))
-            return
-        }
-        
-        let outputURL = self.outputParamsURL
-        let spendURL = self.spendParamsURL
-        
-        if !outputParameterPresent {
-            SaplingParameterDownloader.downloadOutputParameter(outputURL) { outputResult in
-                switch outputResult {
-                case .failure(let error):
-                    result(.failure(error))
-                case .success:
-                    guard !spendParameterPresent else {
-                        result(.success(false))
-                        return
-                    }
-                    SaplingParameterDownloader.downloadSpendParameter(spendURL) { spendResult in
-                        switch spendResult {
-                        case .failure(let error):
-                            result(.failure(error))
-                        case .success:
-                            result(.success(false))
-                        }
-                    }
-                }
-            }
-        } else if !spendParameterPresent {
-            SaplingParameterDownloader.downloadSpendParameter(spendURL) { spendResult in
-                switch spendResult {
-                case .failure(let error):
-                    result(.failure(error))
-                case .success:
-                    result(.success(false))
-                }
-            }
-        }
-    }
-}
-
-enum CompactBlockProcessorBuilder {
-    // swiftlint:disable:next function_parameter_count
-    static func buildProcessor(
-        configuration: CompactBlockProcessor.Configuration,
-        service: LightWalletService,
-        storage: CompactBlockStorage,
-        transactionRepository: TransactionRepository,
-        accountRepository: AccountRepository,
-        backend: ZcashRustBackendWelding.Type
-    ) -> CompactBlockProcessor {
-        return CompactBlockProcessor(
-            service: service,
-            storage: storage,
-            backend: backend,
-            config: configuration,
-            repository: transactionRepository,
-            accountRepository: accountRepository
-        )
+        DerivationTool(networkType: network.networkType).isValidTransparentAddress(address)
     }
 }

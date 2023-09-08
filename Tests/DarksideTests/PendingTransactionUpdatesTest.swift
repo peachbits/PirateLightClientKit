@@ -9,14 +9,7 @@ import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional
-class PendingTransactionUpdatesTest: XCTestCase {
-    // TODO: Parameterize this from environment?
-    // swiftlint:disable:next line_length
-    var seedPhrase = "still champion voice habit trend flight survey between bitter process artefact blind carbon truly provide dizzy crush flush breeze blouse charge solid fish spread"
-    // TODO: Parameterize this from environment
-    let testRecipientAddress = "zs17mg40levjezevuhdp5pqrd52zere7r7vrjgdwn5sj4xsqtm20euwahv9anxmwr3y3kmwuz8k55a"
-    
+class PendingTransactionUpdatesTest: ZcashTestCase {
     let sendAmount: Int64 = 1000
     var birthday: BlockHeight = 663150
     let defaultLatestHeight: BlockHeight = 663175
@@ -25,43 +18,32 @@ class PendingTransactionUpdatesTest: XCTestCase {
     var sentTransactionExpectation = XCTestExpectation(description: "sent")
     var expectedReorgHeight: BlockHeight = 665188
     var expectedRewindHeight: BlockHeight = 665188
-    var reorgExpectation = XCTestExpectation(description: "reorg")
     let branchID = "2bb40e60"
     let chainName = "main"
     let network = DarksideWalletDNetwork()
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        coordinator = try TestCoordinator(
-            seed: seedPhrase,
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        self.coordinator = try await TestCoordinator(
+            container: mockContainer,
             walletBirthday: birthday,
-            channelProvider: ChannelProvider(),
             network: network
         )
-        try coordinator.reset(saplingActivation: 663150, branchID: "e9ff75a6", chainName: "main")
+        try self.coordinator.reset(saplingActivation: 663150, branchID: "e9ff75a6", chainName: "main")
     }
-    
-    override func tearDownWithError() throws {
-        try super.tearDownWithError()
-        NotificationCenter.default.removeObserver(self)
-        try coordinator.stop()
-        try? FileManager.default.removeItem(at: coordinator.databases.cacheDB)
+
+    override func tearDown() async throws {
+        try await super.tearDown()
+        let coordinator = self.coordinator!
+        self.coordinator = nil
+
+        try await coordinator.stop()
+        try? FileManager.default.removeItem(at: coordinator.databases.fsCacheDbRoot)
         try? FileManager.default.removeItem(at: coordinator.databases.dataDB)
-        try? FileManager.default.removeItem(at: coordinator.databases.pendingDB)
     }
     
-    @objc func handleReorg(_ notification: Notification) {
-        guard
-            let reorgHeight = notification.userInfo?[CompactBlockProcessorNotificationKey.reorgHeight] as? BlockHeight
-        else {
-            XCTFail("empty reorg notification")
-            return
-        }
-        
-        XCTAssertEqual(reorgHeight, expectedReorgHeight)
-        reorgExpectation.fulfill()
-    }
-    
-    func testPendingTransactionMinedHeightUpdated() throws {
+    func testPendingTransactionMinedHeightUpdated() async throws {
         /*
         1. create fake chain
         */
@@ -78,53 +60,54 @@ class PendingTransactionUpdatesTest: XCTestCase {
         1a. sync to latest height
         */
         LoggerProxy.info("1a. sync to latest height")
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [firstSyncExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    firstSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
         sleep(1)
         
         let sendExpectation = XCTestExpectation(description: "send expectation")
-        var pendingEntity: PendingTransactionEntity?
+        var pendingEntity: ZcashTransaction.Overview?
         
         /*
         2. send transaction to recipient address
         */
         LoggerProxy.info("2. send transaction to recipient address")
-        coordinator.synchronizer.sendToAddress(
-            // swiftlint:disable:next force_unwrapping
-            spendingKey: self.coordinator.spendingKeys!.first!,
-            zatoshi: 20000,
-            toAddress: self.testRecipientAddress,
-            memo: "this is a test",
-            from: 0,
-            resultBlock: { result in
-                switch result {
-                case .failure(let e):
-                    self.handleError(e)
-                case .success(let pendingTx):
-                    pendingEntity = pendingTx
-                }
-                sendExpectation.fulfill()
-            }
-        )
+        do {
+            let pendingTx = try await coordinator.synchronizer.sendToAddress(
+                spendingKey: self.coordinator.spendingKey,
+                zatoshi: Zatoshi(20000),
+                toAddress: try Recipient(Environment.testRecipientAddress, network: self.network.networkType),
+                memo: try Memo(string: "this is a test")
+            )
+            pendingEntity = pendingTx
+            sendExpectation.fulfill()
+        } catch {
+            await self.handleError(error)
+        }
         
-        wait(for: [sendExpectation], timeout: 11)
+        await fulfillment(of: [sendExpectation], timeout: 11)
         
         guard let pendingUnconfirmedTx = pendingEntity else {
             XCTFail("no pending transaction after sending")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
-        XCTAssertFalse(
-            pendingUnconfirmedTx.isConfirmed(currentHeight: 663188),
+        XCTAssertTrue(
+            pendingUnconfirmedTx.isPending(currentHeight: 633188),
             "pending transaction evaluated as confirmed when it shouldn't"
         )
-        XCTAssertFalse(
-            pendingUnconfirmedTx.isMined,
+        XCTAssertNil(
+            pendingUnconfirmedTx.minedHeight,
             "pending transaction evaluated as mined when it shouldn't"
         )
         
@@ -139,7 +122,7 @@ class PendingTransactionUpdatesTest: XCTestCase {
         LoggerProxy.info("3. getIncomingTransaction")
         guard let incomingTx = try coordinator.getIncomingTransactions()?.first else {
             XCTFail("no incoming transaction")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
@@ -167,17 +150,22 @@ class PendingTransactionUpdatesTest: XCTestCase {
         LoggerProxy.info("6. sync to latest height")
         let secondSyncExpectation = XCTestExpectation(description: "after send expectation")
         
-        try coordinator.sync(
-            completion: { _ in
-                secondSyncExpectation.fulfill()
-            },
-            error: self.handleError
-        )
-        
-        wait(for: [secondSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(coordinator.synchronizer.pendingTransactions.count, 1)
-        guard let afterStagePendingTx = coordinator.synchronizer.pendingTransactions.first else {
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    secondSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [secondSyncExpectation], timeout: 5)
+
+        let pendingTransactionsCount = await coordinator.synchronizer.pendingTransactions.count
+        XCTAssertEqual(pendingTransactionsCount, 1)
+        guard let afterStagePendingTx = await coordinator.synchronizer.pendingTransactions.first else {
             return
         }
         
@@ -186,7 +174,7 @@ class PendingTransactionUpdatesTest: XCTestCase {
         */
         LoggerProxy.info("6a. verify that there's a pending transaction with a mined height of \(sentTxHeight)")
         XCTAssertEqual(afterStagePendingTx.minedHeight, sentTxHeight)
-        XCTAssertTrue(afterStagePendingTx.isMined, "pending transaction shown as unmined when it has been mined")
+        XCTAssertNotNil(afterStagePendingTx.minedHeight, "pending transaction shown as unmined when it has been mined")
         XCTAssertTrue(afterStagePendingTx.isPending(currentHeight: sentTxHeight))
         
         /*
@@ -207,33 +195,35 @@ class PendingTransactionUpdatesTest: XCTestCase {
         */
         LoggerProxy.info("last sync to latest height: \(lastStageHeight)")
         
-        try coordinator.sync(completion: { _ in
-            syncToConfirmExpectation.fulfill()
-        }, error: self.handleError)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    syncToConfirmExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [syncToConfirmExpectation], timeout: 6)
+        let supposedlyPendingUnexistingTransaction = try await coordinator.synchronizer.allPendingTransactions().first
+
+        let clearedTransactions = await coordinator.synchronizer
+            .transactions
+
+        let clearedTransaction = clearedTransactions.first(where: { $0.rawID == afterStagePendingTx.rawID })
         
-        wait(for: [syncToConfirmExpectation], timeout: 6)
-        var supposedlyPendingUnexistingTransaction: PendingTransactionEntity?
-        
-        XCTAssertNoThrow(try { supposedlyPendingUnexistingTransaction = try coordinator.synchronizer.allPendingTransactions().first }())
-        
+        XCTAssertEqual(clearedTransaction!.value.amount, afterStagePendingTx.value.amount)
         XCTAssertNil(supposedlyPendingUnexistingTransaction)
     }
     
-    func handleError(_ error: Error?) {
-        _ = try? coordinator.stop()
+    func handleError(_ error: Error?) async {
+        _ = try? await coordinator.stop()
         guard let testError = error else {
             XCTFail("failed with nil error")
             return
         }
         XCTFail("Failed with error: \(testError)")
-    }
-    
-    func hookToReOrgNotification() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleReorg(_:)),
-            name: .blockProcessorHandledReOrg,
-            object: nil
-        )
     }
 }

@@ -9,13 +9,13 @@ import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional force_unwrapping
 class TransactionRepositoryTests: XCTestCase {
     var transactionRepository: TransactionRepository!
-    
-    override func setUp() {
-        super.setUp()
-        transactionRepository = TestDbBuilder.transactionRepository()
+
+    override func setUp() async throws {
+        try await super.setUp()
+        let rustBackend = ZcashRustBackend.makeForTests(fsBlockDbRoot: Environment.uniqueTestTempDirectory, networkType: .testnet)
+        transactionRepository = try! await TestDbBuilder.transactionRepository(rustBackend: rustBackend)
     }
     
     override func tearDown() {
@@ -23,155 +23,200 @@ class TransactionRepositoryTests: XCTestCase {
         transactionRepository = nil
     }
     
-    func testCount() {
-        var count: Int?
-        XCTAssertNoThrow(try { count = try self.transactionRepository.countAll() }())
+    func testCount() async throws {
+        let count = try await self.transactionRepository.countAll()
         XCTAssertNotNil(count)
-        XCTAssertEqual(count, 27)
+        XCTAssertEqual(count, 21)
     }
     
-    func testCountUnmined() {
-        var count: Int?
-        XCTAssertNoThrow(try { count = try self.transactionRepository.countUnmined() }())
+    func testCountUnmined() async throws {
+        let count = try await self.transactionRepository.countUnmined()
         XCTAssertNotNil(count)
         XCTAssertEqual(count, 0)
     }
-    
-    func testFindById() {
-        var transaction: TransactionEntity?
-        XCTAssertNoThrow(try { transaction = try self.transactionRepository.findBy(id: 10) }())
-        guard let transaction = transaction else {
-            XCTFail("transaction is nil")
-            return
-        }
-        
-        XCTAssertEqual(transaction.id, 10)
-        XCTAssertEqual(transaction.minedHeight, 652812)
-        XCTAssertEqual(transaction.transactionIndex, 5)
+
+    func testBlockForHeight() async throws {
+        let block = try await self.transactionRepository.blockForHeight(663150)
+        XCTAssertEqual(block?.height, 663150)
+    }
+
+    func testLastScannedHeight() async throws {
+        let height = try await self.transactionRepository.lastScannedHeight()
+        XCTAssertEqual(height, 665000)
+    }
+
+    func testFindInRange() async throws {
+        let transactions = try await self.transactionRepository.find(in: 663218...663974, limit: 3, kind: .received)
+        XCTAssertEqual(transactions.count, 3)
+        XCTAssertEqual(transactions[0].minedHeight, 663974)
+        XCTAssertEqual(transactions[0].isSentTransaction, false)
+        XCTAssertEqual(transactions[1].minedHeight, 663953)
+        XCTAssertEqual(transactions[1].isSentTransaction, false)
+        XCTAssertEqual(transactions[2].minedHeight, 663229)
+        XCTAssertEqual(transactions[2].isSentTransaction, false)
     }
     
-    func testFindByTxId() {
-        var transaction: TransactionEntity?
-        
-        let id = Data(fromHexEncodedString: "0BAFC5B83F5B39A5270144ECD98DBC65115055927EDDA8FF20F081FFF13E4780")!
-        
-        XCTAssertNoThrow(
-            try { transaction = try self.transactionRepository.findBy(rawId: id) }()
+    func testFindById() async throws {
+        let transaction = try await self.transactionRepository.find(id: 10)
+        XCTAssertEqual(transaction.id, 10)
+        XCTAssertEqual(transaction.minedHeight, 663942)
+        XCTAssertEqual(transaction.index, 5)
+    }
+    
+    func testFindByTxId() async throws {
+        let id = Data(fromHexEncodedString: "01af48bcc4e9667849a073b8b5c539a0fc19de71aac775377929dc6567a36eff")!
+        let transaction = try await self.transactionRepository.find(rawID: id)
+        XCTAssertEqual(transaction.id, 8)
+        XCTAssertEqual(transaction.minedHeight, 663922)
+        XCTAssertEqual(transaction.index, 1)
+    }
+    
+    func testFindAllSentTransactions() async throws {
+        let transactions = try await self.transactionRepository.find(offset: 0, limit: Int.max, kind: .sent)
+        XCTAssertEqual(transactions.count, 13)
+        transactions.forEach { XCTAssertEqual($0.isSentTransaction, true) }
+    }
+    
+    func testFindAllReceivedTransactions() async throws {
+        let transactions = try await self.transactionRepository.find(offset: 0, limit: Int.max, kind: .received)
+        XCTAssertEqual(transactions.count, 8)
+        transactions.forEach { XCTAssertEqual($0.isSentTransaction, false) }
+    }
+    
+    func testFindAllTransactions() async throws {
+        let transactions = try await self.transactionRepository.find(offset: 0, limit: Int.max, kind: .all)
+        XCTAssertEqual(transactions.count, 21)
+    }
+
+    func testFindReceivedOffsetLimit() async throws {
+        let transactions = try await self.transactionRepository.findReceived(offset: 3, limit: 3)
+        XCTAssertEqual(transactions.count, 3)
+        XCTAssertEqual(transactions[0].minedHeight, 663229)
+        XCTAssertEqual(transactions[1].minedHeight, 663218)
+        XCTAssertEqual(transactions[2].minedHeight, 663202)
+    }
+
+    func testFindSentOffsetLimit() async throws {
+        let transactions = try await self.transactionRepository.findSent(offset: 3, limit: 3)
+        XCTAssertEqual(transactions.count, 3)
+        XCTAssertEqual(transactions[0].minedHeight, 664022)
+        XCTAssertEqual(transactions[1].minedHeight, 664012)
+        XCTAssertEqual(transactions[2].minedHeight, 663956)
+    }
+
+    func testFindMemoForTransaction() async throws {
+        let transaction = ZcashTransaction.Overview(
+            accountId: 0,
+            blockTime: nil,
+            expiryHeight: nil,
+            fee: nil,
+            id: 9,
+            index: nil,
+            hasChange: false,
+            memoCount: 0,
+            minedHeight: nil,
+            raw: nil,
+            rawID: Data(),
+            receivedNoteCount: 0,
+            sentNoteCount: 0,
+            value: Zatoshi(-1000),
+            isExpiredUmined: false
         )
 
-        guard let transaction = transaction else {
-            XCTFail("transaction is nil")
+        let memos = try await self.transactionRepository.findMemos(for: transaction)
+
+        guard memos.count == 1 else {
+            XCTFail("Expected transaction to have one memo")
             return
         }
-        
-        XCTAssertEqual(transaction.id, 10)
-        XCTAssertEqual(transaction.minedHeight, 652812)
-        XCTAssertEqual(transaction.transactionIndex, 5)
+
+        XCTAssertEqual(memos[0].toString(), "Some funds")
     }
-    
-    func testFindAllSentTransactions() {
-        var transactions: [ConfirmedTransactionEntity]?
-        XCTAssertNoThrow(try { transactions = try self.transactionRepository.findAllSentTransactions(offset: 0, limit: Int.max) }())
-        guard let txs = transactions else {
-            XCTFail("find all sent transactions returned no transactions")
-            return
-        }
-        
-        XCTAssertEqual(txs.count, 0)
+
+    func testFindMemoForReceivedTransaction() async throws {
+        let transaction = ZcashTransaction.Overview(
+            accountId: 0,
+            blockTime: 1,
+            expiryHeight: nil,
+            fee: nil,
+            id: 5,
+            index: 0,
+            hasChange: false,
+            memoCount: 1,
+            minedHeight: 0,
+            raw: nil,
+            rawID: Data(),
+            receivedNoteCount: 1,
+            sentNoteCount: 0,
+            value: .zero,
+            isExpiredUmined: false
+        )
+
+        let memos = try await self.transactionRepository.findMemos(for: transaction)
+        XCTAssertEqual(memos.count, 1)
+        XCTAssertEqual(memos[0].toString(), "first mainnet tx from the SDK")
     }
-    
-    func testFindAllReceivedTransactions() {
-        var transactions: [ConfirmedTransactionEntity]?
-        XCTAssertNoThrow(try { transactions = try self.transactionRepository.findAllReceivedTransactions(offset: 0, limit: Int.max) }())
-        guard let txs = transactions else {
-            XCTFail("find all received transactions returned no transactions")
-            return
-        }
-        
-        XCTAssertEqual(txs.count, 27)
-    }
-    
-    func testFindAllTransactions() {
-        var transactions: [ConfirmedTransactionEntity]?
-        XCTAssertNoThrow(try { transactions = try self.transactionRepository.findAll(offset: 0, limit: Int.max) }())
-        guard let txs = transactions else {
-            XCTFail("find all transactions returned no transactions")
-            return
-        }
-        
-        XCTAssertEqual(txs.count, 27)
+
+    func testFindMemoForSentTransaction() async throws {
+        let transaction = ZcashTransaction.Overview(
+            accountId: 0,
+            blockTime: 1,
+            expiryHeight: nil,
+            fee: nil,
+            id: 9,
+            index: 0,
+            hasChange: false,
+            memoCount: 1,
+            minedHeight: nil,
+            raw: nil,
+            rawID: Data(),
+            receivedNoteCount: 0,
+            sentNoteCount: 2,
+            value: .zero,
+            isExpiredUmined: false
+        )
+
+        let memos = try await self.transactionRepository.findMemos(for: transaction)
+        XCTAssertEqual(memos.count, 1)
+        XCTAssertEqual(memos[0].toString(), "Some funds")
     }
     
     func testFindAllPerformance() {
         // This is an example of a performance test case.
         self.measure {
-            // Put the code you want to measure the time of here.
-            
-            do {
-                _ = try self.transactionRepository.findAll(offset: 0, limit: Int.max)
-            } catch {
-                XCTFail("find all failed")
+            let expectation = expectation(description: "Measure")
+            Task(priority: .userInitiated) {
+                // Put the code you want to measure the time of here.
+                do {
+                    _ = try await self.transactionRepository.find(offset: 0, limit: Int.max, kind: .all)
+                    expectation.fulfill()
+                } catch {
+                    XCTFail("find all failed")
+                }
             }
+            wait(for: [expectation], timeout: 2)
         }
     }
     
-    func testFindAllFrom() throws {
-        guard
-            let transactions = try self.transactionRepository.findAll(offset: 0, limit: Int.max),
-            let allFromNil = try self.transactionRepository.findAll(from: nil, limit: Int.max)
-        else {
-            return XCTFail("find all failed")
-        }
-        
-        XCTAssertEqual(transactions.count, allFromNil.count)
-        
-        for transaction in transactions {
-            guard allFromNil.first(where: { $0.rawTransactionId == transaction.rawTransactionId }) != nil else {
-                XCTFail("not equal")
+    func testFindAllFrom() async throws {
+        let transaction = try await self.transactionRepository.find(id: 16)
+        let transactionsFrom = try await self.transactionRepository.find(from: transaction, limit: Int.max, kind: .all)
+
+        XCTAssertEqual(transactionsFrom.count, 8)
+
+        transactionsFrom.forEach { preceededTransaction in
+            guard let preceededTransactionIndex = preceededTransaction.index, let transactionIndex = transaction.index else {
+                XCTFail("Transactions are missing indexes.")
                 return
             }
-        }
-    }
-    
-    func testFindAllFromSlice() throws {
-        let limit = 4
-        let start = 7
-        guard
-            let transactions = try self.transactionRepository.findAll(offset: 0, limit: Int.max),
-            let allFromNil = try self.transactionRepository.findAll(from: transactions[start], limit: limit)
-        else {
-            return XCTFail("find all failed")
-        }
-        
-        XCTAssertEqual(limit, allFromNil.count)
-        
-        let slice = transactions[start + 1 ... start + limit]
-        XCTAssertEqual(slice.count, allFromNil.count)
-        for transaction in slice {
-            guard allFromNil.first(where: { $0.rawTransactionId == transaction.rawTransactionId }) != nil else {
-                XCTFail("not equal")
+
+            guard let preceededTransactionBlockTime = preceededTransaction.blockTime, let transactionBlockTime = transaction.blockTime else {
+                XCTFail("Transactions are missing block time.")
                 return
             }
-        }
-    }
-    
-    func testFindAllFromLastSlice() throws {
-        let limit = 10
-        let start = 20
-        guard
-            let transactions = try self.transactionRepository.findAll(offset: 0, limit: Int.max),
-            let allFromNil = try self.transactionRepository.findAll(from: transactions[start], limit: limit)
-        else {
-            return XCTFail("find all failed")
-        }
-        
-        let slice = transactions[start + 1 ..< transactions.count]
-        XCTAssertEqual(slice.count, allFromNil.count)
-        for transaction in slice {
-            guard allFromNil.first(where: { $0.rawTransactionId == transaction.rawTransactionId }) != nil else {
-                XCTFail("not equal")
-                return
-            }
+
+            XCTAssertLessThan(preceededTransactionIndex, transactionIndex)
+            XCTAssertLessThan(preceededTransactionBlockTime, transactionBlockTime)
         }
     }
 }

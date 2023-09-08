@@ -4,19 +4,19 @@ import PackageDescription
 let package = Package(
     name: "PirateLightClientKit",
     platforms: [
-        .iOS(.v12),
-        .macOS(.v10_12)
+        .iOS(.v13),
+        .macOS(.v12)
     ],
     products: [
         .library(
             name: "PirateLightClientKit",
             targets: ["PirateLightClientKit"]
-        ),
+        )
     ],
     dependencies: [
-        .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.0.0"),
-        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.13.0"),
-        .package(name:"libpiratelc", url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", from:"0.0.5"),
+        .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.14.0"),
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.14.1"),
+        .package(url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", from: "0.3.1")
     ],
     targets: [
         .target(
@@ -24,11 +24,12 @@ let package = Package(
             dependencies: [
                 .product(name: "SQLite", package: "SQLite.swift"),
                 .product(name: "GRPC", package: "grpc-swift"),
-                .product(name: "libpiratelc", package: "libpiratelc"),
+                .product(name: "libpiratelc", package: "pirate-light-client-ffi")
             ],
             exclude: [
-                "Service/ProtoBuf/proto/compact_formats.proto",
-                "Service/ProtoBuf/proto/service.proto"
+                "Modules/Service/GRPC/ProtoBuf/proto/compact_formats.proto",
+                "Modules/Service/GRPC/ProtoBuf/proto/service.proto",
+                "Error/Sourcery/"
             ],
             resources: [
                 .copy("Resources/piratesaplingtree-checkpoints")
@@ -39,12 +40,21 @@ let package = Package(
             dependencies: ["PirateLightClientKit"],
             path: "Tests/TestUtils",
             exclude: [
-                "proto/darkside.proto"
+                "proto/darkside.proto",
+                "Sourcery/AutoMockable.stencil",
+                "Sourcery/generateMocks.sh"
             ],
             resources: [
-                .copy("test_data.db"),
-                .copy("cache.db"),
-                .copy("PirateSdk_Data.db"),
+                .copy("Resources/test_data.db"),
+                .copy("Resources/cache.db"),
+                .copy("Resources/darkside_caches.db"),
+                .copy("Resources/darkside_data.db"),
+                .copy("Resources/sandblasted_mainnet_block.json"),
+                .copy("Resources/txBase64String.txt"),
+                .copy("Resources/txFromAndroidSDK.txt"),
+                .copy("Resources/integerOverflowJSON.json"),
+                .copy("Resources/sapling-spend.params"),
+                .copy("Resources/sapling-output.params")
             ]
         ),
         .testTarget(
@@ -57,6 +67,17 @@ let package = Package(
         ),
         .testTarget(
             name: "DarksideTests",
+            dependencies: ["PirateLightClientKit", "TestUtils"]
+        ),
+        .testTarget(
+            name: "AliasDarksideTests",
+            dependencies: ["PirateLightClientKit", "TestUtils"],
+            exclude: [
+                "scripts/"
+            ]
+        ),
+        .testTarget(
+            name: "PerformanceTests",
             dependencies: ["PirateLightClientKit", "TestUtils"]
         )
     ]

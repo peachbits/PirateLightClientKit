@@ -3,19 +3,16 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 52;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0D1BE4512581585C00F78BE3 /* DerivationToolViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1BE4502581585C00F78BE3 /* DerivationToolViewController.swift */; };
 		0D1BE47F2581937100F78BE3 /* GetUTXOsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1BE47E2581937100F78BE3 /* GetUTXOsViewController.swift */; };
-		0D49A18C241698A800CC0649 /* SampleLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D49A18B241698A800CC0649 /* SampleLogger.swift */; };
 		0D4EBA312396CFD70041B507 /* SendViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4EBA302396CFD70041B507 /* SendViewController.swift */; };
 		0D6CE8BD252E3C4A0005D707 /* SaplingParametersViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6CE8BC252E3C4A0005D707 /* SaplingParametersViewController.swift */; };
 		0D756A94236C761E009B041B /* GetAddressViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D756A93236C761E009B041B /* GetAddressViewController.swift */; };
 		0D76121926B1D66D001CA417 /* Testnet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D76121826B1D66D001CA417 /* Testnet.swift */; };
 		0D7A4A83236CCD88001F4DD8 /* SyncBlocksViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7A4A82236CCD88001F4DD8 /* SyncBlocksViewController.swift */; };
-		0D7C85E523AD5A9B006878FC /* SampleStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7C85E423AD5A9B006878FC /* SampleStorage.swift */; };
 		0D907F162322CC5900D641FE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D907F152322CC5900D641FE /* AppDelegate.swift */; };
 		0D907F182322CC5900D641FE /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D907F172322CC5900D641FE /* ViewController.swift */; };
 		0D907F1B2322CC5900D641FE /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 0D907F192322CC5900D641FE /* Main.storyboard */; };
@@ -34,9 +31,6 @@
 		0DA1C4C627D11D9500E5006E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D907F152322CC5900D641FE /* AppDelegate.swift */; };
 		0DA1C4C727D11D9500E5006E /* SaplingParametersViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6CE8BC252E3C4A0005D707 /* SaplingParametersViewController.swift */; };
 		0DA1C4C827D11D9500E5006E /* GetUTXOsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1BE47E2581937100F78BE3 /* GetUTXOsViewController.swift */; };
-		0DA1C4C927D11D9500E5006E /* DerivationToolViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1BE4502581585C00F78BE3 /* DerivationToolViewController.swift */; };
-		0DA1C4CA27D11D9500E5006E /* SampleStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7C85E423AD5A9B006878FC /* SampleStorage.swift */; };
-		0DA1C4CB27D11D9500E5006E /* SampleLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D49A18B241698A800CC0649 /* SampleLogger.swift */; };
 		0DA1C4CC27D11D9500E5006E /* TransactionsDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA58B952397F2CB004596EA /* TransactionsDataSource.swift */; };
 		0DA1C4CD27D11D9500E5006E /* PaginatedTransactionsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF53E6623A438F100D7249C /* PaginatedTransactionsViewController.swift */; };
 		0DA1C4CF27D11D9500E5006E /* KRProgressHUD in Frameworks */ = {isa = PBXBuildFile; productRef = 0DA1C4B227D11D9500E5006E /* KRProgressHUD */; };
@@ -55,6 +49,10 @@
 		0DDFB33C236B743000AED892 /* LatestHeightViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDFB33B236B743000AED892 /* LatestHeightViewController.swift */; };
 		0DDFB33E236B844900AED892 /* DemoAppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDFB33D236B844900AED892 /* DemoAppConfig.swift */; };
 		0DF53E6723A438F100D7249C /* PaginatedTransactionsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF53E6623A438F100D7249C /* PaginatedTransactionsViewController.swift */; };
+		343CB69729CDC05D0063BF41 /* SyncBlocksListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343CB69629CDC05D0063BF41 /* SyncBlocksListViewController.swift */; };
+		343CB69829CDC05D0063BF41 /* SyncBlocksListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343CB69629CDC05D0063BF41 /* SyncBlocksListViewController.swift */; };
+		34CC8FD029CDC212001E06E9 /* SynchronizerCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CC8FCF29CDC212001E06E9 /* SynchronizerCell.swift */; };
+		34CC8FD129CDC212001E06E9 /* SynchronizerCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CC8FCF29CDC212001E06E9 /* SynchronizerCell.swift */; };
 		F94912632790D7C4004BB3DE /* PirateLightClientSample-Mainnet-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F94912622790D7C4004BB3DE /* PirateLightClientSample-Mainnet-Info.plist */; };
 		F9D63D1F27CD114A00F4DC5F /* PirateLightClientKit in Frameworks */ = {isa = PBXBuildFile; productRef = F9D63D1E27CD114A00F4DC5F /* PirateLightClientKit */; };
 		F9D63D2227CD125300F4DC5F /* KRProgressHUD in Frameworks */ = {isa = PBXBuildFile; productRef = F9D63D2127CD125300F4DC5F /* KRProgressHUD */; };
@@ -74,16 +72,13 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0D1BE4502581585C00F78BE3 /* DerivationToolViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DerivationToolViewController.swift; sourceTree = "<group>"; };
 		0D1BE47E2581937100F78BE3 /* GetUTXOsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetUTXOsViewController.swift; sourceTree = "<group>"; };
-		0D49A18B241698A800CC0649 /* SampleLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleLogger.swift; sourceTree = "<group>"; };
 		0D4EBA302396CFD70041B507 /* SendViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendViewController.swift; sourceTree = "<group>"; };
 		0D6CE8BC252E3C4A0005D707 /* SaplingParametersViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaplingParametersViewController.swift; sourceTree = "<group>"; };
 		0D756A93236C761E009B041B /* GetAddressViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetAddressViewController.swift; sourceTree = "<group>"; };
 		0D76121526B1D5ED001CA417 /* Mainnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mainnet.swift; sourceTree = "<group>"; };
 		0D76121826B1D66D001CA417 /* Testnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Testnet.swift; sourceTree = "<group>"; };
 		0D7A4A82236CCD88001F4DD8 /* SyncBlocksViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncBlocksViewController.swift; sourceTree = "<group>"; };
-		0D7C85E423AD5A9B006878FC /* SampleStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleStorage.swift; sourceTree = "<group>"; };
 		0D907F122322CC5900D641FE /* PirateLightClientSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PirateLightClientSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D907F152322CC5900D641FE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		0D907F172322CC5900D641FE /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -104,6 +99,8 @@
 		0DDFB33D236B844900AED892 /* DemoAppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoAppConfig.swift; sourceTree = "<group>"; };
 		0DF53E6623A438F100D7249C /* PaginatedTransactionsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaginatedTransactionsViewController.swift; sourceTree = "<group>"; };
 		22AE1E6F756FD3EA41A397FC /* Pods_PirateLightClientSampleTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PirateLightClientSampleTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		343CB69629CDC05D0063BF41 /* SyncBlocksListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncBlocksListViewController.swift; sourceTree = "<group>"; };
+		34CC8FCF29CDC212001E06E9 /* SynchronizerCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynchronizerCell.swift; sourceTree = "<group>"; };
 		372CC57DB80CC242BA556A30 /* Pods_PirateLightClientSampleUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PirateLightClientSampleUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		541D36743362A797BF085D14 /* Pods_PirateLightClientSample_Mainnet.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PirateLightClientSample_Mainnet.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		EBA186B246C4205F9BF71EED /* Pods_PirateLightClientSample.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PirateLightClientSample.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -146,14 +143,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0D1BE44F2581583D00F78BE3 /* Derivation Tool */ = {
-			isa = PBXGroup;
-			children = (
-				0D1BE4502581585C00F78BE3 /* DerivationToolViewController.swift */,
-			);
-			path = "Derivation Tool";
-			sourceTree = "<group>";
-		};
 		0D1BE47D2581933C00F78BE3 /* Get UTXOs */ = {
 			isa = PBXGroup;
 			children = (
@@ -199,6 +188,8 @@
 			isa = PBXGroup;
 			children = (
 				0D7A4A82236CCD88001F4DD8 /* SyncBlocksViewController.swift */,
+				343CB69629CDC05D0063BF41 /* SyncBlocksListViewController.swift */,
+				34CC8FCF29CDC212001E06E9 /* SynchronizerCell.swift */,
 			);
 			path = "Sync Blocks";
 			sourceTree = "<group>";
@@ -230,7 +221,6 @@
 			children = (
 				0D76121426B1D5D7001CA417 /* Constants */,
 				0D1BE47D2581933C00F78BE3 /* Get UTXOs */,
-				0D1BE44F2581583D00F78BE3 /* Derivation Tool */,
 				0D6CE8BB252E3C1A0005D707 /* Sapling Parameters */,
 				0DBF8F9323A80F0E0010B85F /* Transaction Detail */,
 				0DF53E6523A438BA00D7249C /* Paginated Transactions */,
@@ -248,8 +238,6 @@
 				0D907F212322CC5B00D641FE /* Info.plist */,
 				F94912622790D7C4004BB3DE /* PirateLightClientSample-Mainnet-Info.plist */,
 				0DDFB33D236B844900AED892 /* DemoAppConfig.swift */,
-				0D7C85E423AD5A9B006878FC /* SampleStorage.swift */,
-				0D49A18B241698A800CC0649 /* SampleLogger.swift */,
 			);
 			path = PirateLightClientSample;
 			sourceTree = "<group>";
@@ -338,7 +326,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0D907F3A2322CC5B00D641FE /* Build configuration list for PBXNativeTarget "PirateLightClientSample" */;
 			buildPhases = (
-				0DCB58A4237B5B580040096C /* ShellScript */,
+				0DCB58A4237B5B580040096C /* Swiftlint */,
 				0D907F0E2322CC5900D641FE /* Sources */,
 				0D907F0F2322CC5900D641FE /* Frameworks */,
 				0D907F102322CC5900D641FE /* Resources */,
@@ -381,7 +369,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0DA1C4D927D11D9500E5006E /* Build configuration list for PBXNativeTarget "PirateLightClientSample-Mainnet" */;
 			buildPhases = (
-				0DA1C4BA27D11D9500E5006E /* ShellScript */,
+				0DA1C4BA27D11D9500E5006E /* Swiftlint */,
 				0DA1C4BB27D11D9500E5006E /* Sources */,
 				0DA1C4CE27D11D9500E5006E /* Frameworks */,
 				0DA1C4D427D11D9500E5006E /* Resources */,
@@ -479,7 +467,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		0DA1C4BA27D11D9500E5006E /* ShellScript */ = {
+		0DA1C4BA27D11D9500E5006E /* Swiftlint */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -488,16 +476,18 @@
 			);
 			inputPaths = (
 			);
+			name = Swiftlint;
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd ../../\nif which swiftlint >/dev/null; then\n  swiftlint lint --config .swiftlint.yml\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
+			shellScript = "swiftlint_version=0.50.3\n\nif which swiftlint >/dev/null; then\n  if [[ $(swiftlint version) != $swiftlint_version ]]; then\n    echo \"warning: Compatible SwiftLint version not installed, download version $swiftlint_version from https://github.com/realm/SwiftLint. Currently installed version is $(swiftlint version)\"\n  fi\n\n  cd ../../\n  echo \"Linting the Secant code\"\n  swiftlint lint --config .swiftlint.yml\n  echo \"Linting tests\"\n  swiftlint lint --config .swiftlint_tests.yml\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n\n";
 		};
-		0DCB58A4237B5B580040096C /* ShellScript */ = {
+		0DCB58A4237B5B580040096C /* Swiftlint */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -505,13 +495,14 @@
 			);
 			inputPaths = (
 			);
+			name = Swiftlint;
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "cd ../../\nif which swiftlint >/dev/null; then\n  swiftlint lint --config .swiftlint.yml\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
+			shellPath = /bin/zsh;
+			shellScript = "swiftlint_version=0.50.3\n\nif which swiftlint >/dev/null; then\n  if [[ $(swiftlint version) != $swiftlint_version ]]; then\n    echo \"warning: Compatible SwiftLint version not installed, download version $swiftlint_version from https://github.com/realm/SwiftLint. Currently installed version is $(swiftlint version)\"\n  fi\n\n  cd ../../\n  echo \"Linting the Secant code\"\n  swiftlint lint --config .swiftlint.yml\n  echo \"Linting tests\"\n  swiftlint lint --config .swiftlint_tests.yml\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -533,11 +524,10 @@
 				0D907F162322CC5900D641FE /* AppDelegate.swift in Sources */,
 				0D6CE8BD252E3C4A0005D707 /* SaplingParametersViewController.swift in Sources */,
 				0D1BE47F2581937100F78BE3 /* GetUTXOsViewController.swift in Sources */,
-				0D1BE4512581585C00F78BE3 /* DerivationToolViewController.swift in Sources */,
-				0D7C85E523AD5A9B006878FC /* SampleStorage.swift in Sources */,
-				0D49A18C241698A800CC0649 /* SampleLogger.swift in Sources */,
 				0DA58B962397F2CB004596EA /* TransactionsDataSource.swift in Sources */,
 				0DF53E6723A438F100D7249C /* PaginatedTransactionsViewController.swift in Sources */,
+				34CC8FD029CDC212001E06E9 /* SynchronizerCell.swift in Sources */,
+				343CB69729CDC05D0063BF41 /* SyncBlocksListViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -566,11 +556,10 @@
 				0DA1C4C627D11D9500E5006E /* AppDelegate.swift in Sources */,
 				0DA1C4C727D11D9500E5006E /* SaplingParametersViewController.swift in Sources */,
 				0DA1C4C827D11D9500E5006E /* GetUTXOsViewController.swift in Sources */,
-				0DA1C4C927D11D9500E5006E /* DerivationToolViewController.swift in Sources */,
-				0DA1C4CA27D11D9500E5006E /* SampleStorage.swift in Sources */,
-				0DA1C4CB27D11D9500E5006E /* SampleLogger.swift in Sources */,
 				0DA1C4CC27D11D9500E5006E /* TransactionsDataSource.swift in Sources */,
 				0DA1C4CD27D11D9500E5006E /* PaginatedTransactionsViewController.swift in Sources */,
+				34CC8FD129CDC212001E06E9 /* SynchronizerCell.swift in Sources */,
+				343CB69829CDC05D0063BF41 /* SyncBlocksListViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -640,6 +629,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = RLPRR8CPQG;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				EXCLUDED_ARCHS = "$(inherited)";
@@ -703,6 +693,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = RLPRR8CPQG;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				EXCLUDED_ARCHS = "$(inherited)";
@@ -729,16 +720,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 6J82A38BF9;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "$(inherited)";
 				INFOPLIST_FILE = PirateLightClientSample/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D COCOAPODS";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -752,16 +742,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 6J82A38BF9;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "$(inherited)";
 				INFOPLIST_FILE = PirateLightClientSample/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D COCOAPODS";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -819,12 +808,12 @@
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "$(inherited)";
 				INFOPLIST_FILE = "PirateLightClientSample-Mainnet-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 13.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D COCOAPODS";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -842,12 +831,12 @@
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "$(inherited)";
 				INFOPLIST_FILE = "PirateLightClientSample-Mainnet-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 13.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_SWIFT_FLAGS = "$(inherited) -D COCOAPODS";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";

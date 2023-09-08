@@ -13,13 +13,13 @@ public enum ResourceProviderError: Error {
 }
 public protocol ResourceProvider {
     var dataDbURL: URL { get }
-    var cacheDbURL: URL { get }
+    var fsCacheURL: URL { get }
 }
 /**
 Convenience provider for a data db and cache db resources.
 */
 public struct DefaultResourceProvider: ResourceProvider {
-    var network: PirateNetwork
+    let network: PirateNetwork
 
     public var dataDbURL: URL {
         let constants = network.constants
@@ -30,14 +30,32 @@ public struct DefaultResourceProvider: ResourceProvider {
             return URL(fileURLWithPath: "file://\(constants.defaultDataDbName)")
         }
     }
-    
-    public var cacheDbURL: URL {
+
+    public var fsCacheURL: URL {
         let constants = network.constants
         do {
             let path = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            return path.appendingPathComponent(constants.defaultCacheDbName)
+            return path.appendingPathComponent(constants.defaultFsBlockDbRootName)
         } catch {
-            return URL(fileURLWithPath: "file://\(constants.defaultCacheDbName)")
+            return URL(fileURLWithPath: "file://\(constants.defaultFsBlockDbRootName)")
+        }
+    }
+
+    public var spendParamsURL: URL {
+        do {
+            let path = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            return path.appendingPathComponent(PirateSDK.spendParamFilename)
+        } catch {
+            return URL(fileURLWithPath: "file://\(PirateSDK.spendParamFilename)")
+        }
+    }
+
+    public var outputParamsURL: URL {
+        do {
+            let path = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            return path.appendingPathComponent(PirateSDK.outputParamFilename)
+        } catch {
+            return URL(fileURLWithPath: "file://\(PirateSDK.outputParamFilename)")
         }
     }
 

@@ -9,29 +9,35 @@ import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional
 class PagedTransactionRepositoryTests: XCTestCase {
     var pagedTransactionRepository: PaginatedTransactionRepository!
     var transactionRepository: TransactionRepository!
-    
+
     override func setUp() {
         super.setUp()
         transactionRepository = MockTransactionRepository(
             unminedCount: 5,
             receivedCount: 150,
             sentCount: 100,
+            scannedHeight: 1000000,
             network: PirateNetworkBuilder.network(for: .testnet)
         )
         pagedTransactionRepository = PagedTransactionDAO(repository: transactionRepository)
     }
 
-    func testBrowsePages() {
+    override func tearDown() {
+        super.tearDown()
+        pagedTransactionRepository = nil
+        transactionRepository = nil
+    }
+
+    func testBrowsePages() async {
         let pageSize = pagedTransactionRepository.pageSize
-        let pageCount = pagedTransactionRepository.pageCount
-        let totalItems = pagedTransactionRepository.itemCount
+        let pageCount = await pagedTransactionRepository.pageCount
+        let totalItems = await pagedTransactionRepository.itemCount
 
         for index in 0 ..< pageCount / pageSize {
-            guard let page = try? pagedTransactionRepository.page(index) else {
+            guard let page = try? await pagedTransactionRepository.page(index) else {
                 XCTFail("page failed to get page \(index)")
                 return
             }

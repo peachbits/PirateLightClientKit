@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  HexEncode.swift
 //  PirateLightClientKit
 //
 //  Created by Francisco Gindre on 12/13/19.

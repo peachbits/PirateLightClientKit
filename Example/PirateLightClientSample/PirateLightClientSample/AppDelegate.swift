@@ -6,74 +6,74 @@
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
 //
 
+import Combine
 import UIKit
 import PirateLightClientKit
 import NotificationBubbles
 
-var loggerProxy = SampleLogger(logLevel: .debug)
+var loggerProxy = OSLogger(logLevel: .debug)
 
-@UIApplicationMain
 // swiftlint:disable force_cast force_try force_unwrapping
+@UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
+    var cancellables: [AnyCancellable] = []
     var window: UIWindow?
     private var wallet: Initializer?
     private var synchronizer: SDKSynchronizer?
-    
+
     var sharedSynchronizer: SDKSynchronizer {
         if let sync = synchronizer {
             return sync
         } else {
-            let sync = try! SDKSynchronizer(initializer: sharedWallet) // this must break if fails
+            let sync = SDKSynchronizer(initializer: sharedWallet) // this must break if fails
             self.synchronizer = sync
             return sync
         }
     }
-    
+
+    var sharedViewingKey: UnifiedFullViewingKey {
+        let derivationTool = DerivationTool(networkType: kPirateNetwork.networkType)
+        let spendingKey = try! derivationTool
+            .deriveUnifiedSpendingKey(seed: DemoAppConfig.defaultSeed, accountIndex: 0)
+
+        return try! derivationTool.deriveUnifiedFullViewingKey(from: spendingKey)
+    }
+
     var sharedWallet: Initializer {
-        if let wallet = wallet {
+        if let wallet {
             return wallet
         } else {
-            let unifiedViewingKeys = try! DerivationTool(networkType: kPirateNetwork.networkType)
-                .deriveUnifiedViewingKeysFromSeed(DemoAppConfig.seed, numberOfAccounts: 1)
-
             let wallet = Initializer(
-                cacheDbURL: try! cacheDbURLHelper(),
+                cacheDbURL: nil,
+                fsBlockDbRoot: try! fsBlockDbRootURLHelper(),
                 dataDbURL: try! dataDbURLHelper(),
-                pendingDbURL: try! pendingDbURLHelper(),
                 endpoint: DemoAppConfig.endpoint,
                 network: kPirateNetwork,
                 spendParamsURL: try! spendParamsURLHelper(),
                 outputParamsURL: try! outputParamsURLHelper(),
-                viewingKeys: unifiedViewingKeys,
-                walletBirthday: DemoAppConfig.birthdayHeight,
-                loggerProxy: loggerProxy
+                saplingParamsSourceURL: SaplingParamsSourceURL.default
             )
-            
-            try! wallet.initialize()
-            var storage = SampleStorage.shared
-            storage!.seed = Data(DemoAppConfig.seed)
-            storage!.privateKey = try! DerivationTool(networkType: kPirateNetwork.networkType)
-                .deriveSpendingKeys(seed: DemoAppConfig.seed, numberOfAccounts: 1)[0]
+
             self.wallet = wallet
             return wallet
         }
     }
-    
-    func subscribeToMinedTxNotifications() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(txMinedNotification(_:)),
-            name: Notification.Name.synchronizerMinedTransaction,
-            object: nil
-        )
-    }
-    
-    @objc func txMinedNotification(_ notification: Notification) {
-        guard let transaction = notification.userInfo?[SDKSynchronizer.NotificationKeys.minedTransaction] as? PendingTransactionEntity else {
-            loggerProxy.error("no tx information on notification")
-            return
-        }
 
+    func subscribeToMinedTxNotifications() {
+        sharedSynchronizer.eventStream
+            .map { event in
+                guard case let .minedTransaction(transaction) = event else { return nil }
+                return transaction
+            }
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveValue: { [weak self] transaction in self?.txMined(transaction) }
+            )
+            .store(in: &cancellables)
+    }
+
+    func txMined(_ transaction: ZcashTransaction.Overview) {
         NotificationBubble.display(
             in: window!.rootViewController!.view,
             options: NotificationBubble.sucessOptions(
@@ -83,33 +83,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             handleTap: {}
         )
     }
-    
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
-        _ = self.sharedWallet
         subscribeToMinedTxNotifications()
-        
+
         return true
     }
-    
+
     func applicationWillResignActive(_ application: UIApplication) {
         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
     }
-    
+
     func applicationDidEnterBackground(_ application: UIApplication) {
         // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
         // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
     }
-    
+
     func applicationWillEnterForeground(_ application: UIApplication) {
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
-    
+
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
     }
-    
+
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
@@ -122,29 +121,29 @@ extension AppDelegate {
     static var shared: AppDelegate {
         UIApplication.shared.delegate as! AppDelegate
     }
-    
-    func clearDatabases() {
-        do {
-            try FileManager.default.removeItem(at: try cacheDbURLHelper())
-        } catch {
-            loggerProxy.error("error clearing cache DB: \(error)")
-        }
-        
-        do {
-            try FileManager.default.removeItem(at: try dataDbURLHelper())
-        } catch {
-            loggerProxy.error("error clearing data db: \(error)")
-        }
-        
-        do {
-            try FileManager.default.removeItem(at: try pendingDbURLHelper())
-        } catch {
-            loggerProxy.error("error clearing data db: \(error)")
-        }
-        
-        var storage = SampleStorage.shared
-        storage!.seed = nil
-        storage!.privateKey = nil
+
+    func wipe(completion completionClosure: @escaping (Error?) -> Void) {
+        guard let synchronizer = (UIApplication.shared.delegate as? AppDelegate)?.sharedSynchronizer else { return }
+
+        // At this point app should show some loader or some UI that indicates action. If the sync is not running then wipe happens immediately.
+        // But if the sync is in progress then the SDK must first stop it. And it may take some time.
+
+        synchronizer.wipe()
+            // Delay is here to be sure that previously showed alerts are gone and it's safe to show another. Or I want to show loading UI for at
+            // least one second in case that wipe happens immediately.
+            .delay(for: .seconds(1), scheduler: DispatchQueue.main, options: .none)
+            .sink(
+                receiveCompletion: { completion in
+                    switch completion {
+                    case .finished:
+                        completionClosure(nil)
+                    case .failure(let error):
+                        completionClosure(error)
+                    }
+                },
+                receiveValue: { _ in }
+            )
+            .store(in: &cancellables)
     }
 }
 
@@ -164,6 +163,15 @@ func documentsDirectoryHelper() throws -> URL {
     try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
 }
 
+func fsBlockDbRootURLHelper() throws -> URL {
+    try documentsDirectoryHelper()
+        .appendingPathComponent(kPirateNetwork.networkType.chainName)
+        .appendingPathComponent(
+            PirateSDK.defaultFsCacheName,
+            isDirectory: true
+        )
+}
+
 func cacheDbURLHelper() throws -> URL {
     try documentsDirectoryHelper()
         .appendingPathComponent(
@@ -178,11 +186,6 @@ func dataDbURLHelper() throws -> URL {
             kPirateNetwork.constants.defaultDbNamePrefix + PirateSDK.defaultDataDbName,
             isDirectory: false
         )
-}
-
-func pendingDbURLHelper() throws -> URL {
-    try documentsDirectoryHelper()
-        .appendingPathComponent(kPirateNetwork.constants.defaultDbNamePrefix + PirateSDK.defaultPendingDbName)
 }
 
 func spendParamsURLHelper() throws -> URL {

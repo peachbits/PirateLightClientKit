@@ -10,14 +10,7 @@ import Foundation
 import XCTest
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional
-class DarksideSanityCheckTests: XCTestCase {
-    // TODO: Parameterize this from environment?
-    // swiftlint:disable:next line_length
-    var seedPhrase = "still champion voice habit trend flight survey between bitter process artefact blind carbon truly provide dizzy crush flush breeze blouse charge solid fish spread"
-    // TODO: Parameterize this from environment
-    let testRecipientAddress = "zs17mg40levjezevuhdp5pqrd52zere7r7vrjgdwn5sj4xsqtm20euwahv9anxmwr3y3kmwuz8k55a"
-
+class DarksideSanityCheckTests: ZcashTestCase {
     let sendAmount: Int64 = 1000
     var birthday: BlockHeight = 663150
     let defaultLatestHeight: BlockHeight = 663175
@@ -30,51 +23,57 @@ class DarksideSanityCheckTests: XCTestCase {
     var reorgExpectation = XCTestExpectation(description: "reorg")
     let branchID = "2bb40e60"
     let chainName = "main"
-    
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        coordinator = try TestCoordinator(
-            seed: seedPhrase,
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        self.coordinator = try await TestCoordinator(
+            container: mockContainer,
             walletBirthday: birthday,
-            channelProvider: ChannelProvider(),
             network: network
         )
-        try coordinator.reset(saplingActivation: birthday, branchID: branchID, chainName: chainName)
-        try coordinator.resetBlocks(dataset: .default)
+
+        try self.coordinator.reset(saplingActivation: self.birthday, branchID: self.branchID, chainName: self.chainName)
+        try self.coordinator.resetBlocks(dataset: .default)
     }
-    
-    override func tearDownWithError() throws {
-        try super.tearDownWithError()
-        try? FileManager.default.removeItem(at: coordinator.databases.cacheDB)
+
+    override func tearDown() async throws {
+        try await super.tearDown()
+        let coordinator = self.coordinator!
+        self.coordinator = nil
+
+        try await coordinator.stop()
+        try? FileManager.default.removeItem(at: coordinator.databases.fsCacheDbRoot)
         try? FileManager.default.removeItem(at: coordinator.databases.dataDB)
-        try? FileManager.default.removeItem(at: coordinator.databases.pendingDB)
     }
     
-    func testDarkside() throws {
+    func testDarkside() async throws {
         let expectedFirstBlock = (height: BlockHeight(663150), hash: "0000000002fd3be4c24c437bd22620901617125ec2a3a6c902ec9a6c06f734fc")
         let expectedLastBlock = (height: BlockHeight(663200), hash: "2fc7b4682f5ba6ba6f86e170b40f0aa9302e1d3becb2a6ee0db611ff87835e4a")
         
         try coordinator.applyStaged(blockheight: expectedLastBlock.height)
+
+        sleep(1)
         
         let syncExpectation = XCTestExpectation(description: "sync to \(expectedLastBlock.height)")
         
-        try coordinator.sync(
+        try await coordinator.sync(
             completion: { _ in
                 syncExpectation.fulfill()
             },
             error: { error in
-                guard let e = error else {
+                guard let error else {
                     XCTFail("failed with unknown error")
                     return
                 }
-                XCTFail("failed with error: \(e)")
+                XCTFail("failed with error: \(error)")
                 return
             }
         )
         
-        wait(for: [syncExpectation], timeout: 5)
+        await fulfillment(of: [syncExpectation], timeout: 5)
         
-        let blocksDao = BlockSQLDAO(dbProvider: SimpleConnectionProvider(path: coordinator.databases.dataDB.absoluteString, readonly: true))
+        let blocksDao = BlockSQLDAO(dbProvider: SimpleConnectionProvider(path: coordinator.databases.dataDB.absoluteString, readonly: false))
         
         let firstBlock = try blocksDao.block(at: expectedFirstBlock.height)
         let lastBlock = try blocksDao.block(at: expectedLastBlock.height)

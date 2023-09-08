@@ -9,41 +9,82 @@ import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable force_try type_body_length
-class BlockBatchValidationTests: XCTestCase {
-    var queue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "Test Queue"
-        queue.maxConcurrentOperationCount = 1
-        return queue
-    }()
+class BlockBatchValidationTests: ZcashTestCase {
+    let testFileManager = FileManager()
+    var rustBackend: ZcashRustBackendWelding!
+    var testTempDirectory: URL!
 
-    override func setUp() {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        testTempDirectory = Environment.uniqueTestTempDirectory
+
+        Dependencies.setup(
+            in: mockContainer,
+            urls: Initializer.URLs(
+                fsBlockDbRoot: testTempDirectory,
+                dataDbURL: try! __dataDbURL(),
+                spendParamsURL: try! __spendParamsURL(),
+                outputParamsURL: try! __outputParamsURL()
+            ),
+            alias: .default,
+            networkType: .testnet,
+            endpoint: LightWalletEndpointBuilder.default,
+            loggingPolicy: .default(.debug)
+        )
+
+        mockContainer.mock(type: LatestBlocksDataProvider.self, isSingleton: true) { _ in LatestBlocksDataProviderMock() }
+
+        try self.testFileManager.createDirectory(at: testTempDirectory, withIntermediateDirectories: false)
+        rustBackend = ZcashRustBackend.makeForTests(fsBlockDbRoot: testTempDirectory, networkType: .testnet)
     }
 
-    override func tearDown() {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-        super.tearDown()
+    override func tearDownWithError() throws {
+        try super.tearDownWithError()
+        try? testFileManager.removeItem(at: testTempDirectory)
+        rustBackend = nil
+        testTempDirectory = nil
     }
 
-    func testBranchIdFailure() throws {
+    func testBranchIdFailure() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+        mockContainer.mock(type: LightWalletService.self, isSingleton: true) { _ in service }
+
+        let storage = FSCompactBlockRepository(
+            fsBlockDbRoot: testTempDirectory,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: testTempDirectory,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
+        )
+        mockContainer.mock(type: CompactBlockRepository.self, isSingleton: true) { _ in storage }
+
+        try await storage.create()
+
+        mockContainer.mock(type: BlockDownloaderService.self, isSingleton: true) { _ in
+            let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
+            return BlockDownloaderServiceImpl(service: service, storage: repository)
+        }
+
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: 1210000,
+            walletBirthdayProvider: { 1210000 },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
@@ -56,50 +97,68 @@ class BlockBatchValidationTests: XCTestCase {
         info.consensusBranchID = "d34db33f"
         info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = Int32(0xd34d)
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let expectation = XCTestExpectation(description: "failure expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: Int32(0xd34d))
+        mockContainer.mock(type: ZcashRustBackendWelding.self, isSingleton: true) { _ in mockBackend.rustBackendMock }
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
-        }
+        let compactBlockProcessor = CompactBlockProcessor(
+            container: mockContainer,
+            config: config
+        )
 
-        operation.errorHandler = { error in
-            expectation.fulfill()
+        do {
+            try await compactBlockProcessor.figureNextBatch(downloaderService: mockContainer.resolve(BlockDownloaderService.self))
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
             switch error {
-            case CompactBlockProcessorError.wrongConsensusBranchId:
+            case ZcashError.compactBlockProcessorWrongConsensusBranchId:
                 break
             default:
-                XCTFail("Expected CompactBlockProcessorError.wrongConsensusBranchId but found \(error)")
+                XCTFail("Expected ZcashError.compactBlockProcessorWrongConsensusBranchId but found \(error)")
             }
         }
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, expectation], timeout: 1, enforceOrder: true)
-        XCTAssertNotNil(operation.error)
-        XCTAssertTrue(operation.isCancelled)
     }
-    
-    func testBranchNetworkMismatchFailure() throws {
+
+    func testBranchNetworkMismatchFailure() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+        mockContainer.mock(type: LightWalletService.self, isSingleton: true) { _ in service }
+
+        let storage = FSCompactBlockRepository(
+            fsBlockDbRoot: testTempDirectory,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: testTempDirectory,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
+        )
+        mockContainer.mock(type: CompactBlockRepository.self, isSingleton: true) { _ in storage }
+
+        try await storage.create()
+
+        mockContainer.mock(type: BlockDownloaderService.self, isSingleton: true) { _ in
+            let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
+            return BlockDownloaderServiceImpl(service: service, storage: repository)
+        }
+
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: 1210000,
+            walletBirthdayProvider: { 1210000 },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
@@ -112,51 +171,68 @@ class BlockBatchValidationTests: XCTestCase {
         info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
 
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let expectation = XCTestExpectation(description: "failure expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
+        mockContainer.mock(type: ZcashRustBackendWelding.self, isSingleton: true) { _ in mockBackend.rustBackendMock }
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
-        }
+        let compactBlockProcessor = CompactBlockProcessor(
+            container: mockContainer,
+            config: config
+        )
 
-        operation.errorHandler = { error in
-            expectation.fulfill()
+        do {
+            try await compactBlockProcessor.figureNextBatch(downloaderService: mockContainer.resolve(BlockDownloaderService.self))
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
             switch error {
-            case CompactBlockProcessorError.networkMismatch(expected: .mainnet, found: .testnet):
+            case ZcashError.compactBlockProcessorNetworkMismatch(.mainnet, .testnet):
                 break
             default:
-                XCTFail("Expected CompactBlockProcessorError.networkMismatch but found \(error)")
+                XCTFail("Expected ZcashError.compactBlockProcessorNetworkMismatch but found \(error)")
             }
         }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, expectation], timeout: 1, enforceOrder: true)
-        XCTAssertNotNil(operation.error)
-        XCTAssertTrue(operation.isCancelled)
     }
-    
-    func testBranchNetworkTypeWrongFailure() throws {
+
+    func testBranchNetworkTypeWrongFailure() async throws {
         let network = PirateNetworkBuilder.network(for: .testnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+        mockContainer.mock(type: LightWalletService.self, isSingleton: true) { _ in service }
+
+        let storage = FSCompactBlockRepository(
+            fsBlockDbRoot: testTempDirectory,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: testTempDirectory,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
+        )
+        mockContainer.mock(type: CompactBlockRepository.self, isSingleton: true) { _ in storage }
+
+        try await storage.create()
+
+        mockContainer.mock(type: BlockDownloaderService.self, isSingleton: true) { _ in
+            let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
+            return BlockDownloaderServiceImpl(service: service, storage: repository)
+        }
+
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: 1210000,
+            walletBirthdayProvider: { 1210000 },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
@@ -169,51 +245,68 @@ class BlockBatchValidationTests: XCTestCase {
         info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
 
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let expectation = XCTestExpectation(description: "failure expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
+        mockContainer.mock(type: ZcashRustBackendWelding.self, isSingleton: true) { _ in mockBackend.rustBackendMock }
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
-        }
+        let compactBlockProcessor = CompactBlockProcessor(
+            container: mockContainer,
+            config: config
+        )
 
-        operation.errorHandler = { error in
-            expectation.fulfill()
+        do {
+            try await compactBlockProcessor.figureNextBatch(downloaderService: mockContainer.resolve(BlockDownloaderService.self))
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
             switch error {
-            case CompactBlockProcessorError.generalError:
+            case ZcashError.compactBlockProcessorChainName:
                 break
             default:
-                XCTFail("Expected CompactBlockProcessorError.generalError but found \(error)")
+                XCTFail("Expected ZcashError.compactBlockProcessorChainName but found \(error)")
             }
         }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, expectation], timeout: 1, enforceOrder: true)
-        XCTAssertNotNil(operation.error)
-        XCTAssertTrue(operation.isCancelled)
     }
-    
-    func testSaplingActivationHeightMismatch() throws {
+
+    func testSaplingActivationHeightMismatch() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
         let service = MockLightWalletService(
             latestBlockHeight: 1210000,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+        mockContainer.mock(type: LightWalletService.self, isSingleton: true) { _ in service }
+
+        let storage = FSCompactBlockRepository(
+            fsBlockDbRoot: testTempDirectory,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: testTempDirectory,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
+        )
+        mockContainer.mock(type: CompactBlockRepository.self, isSingleton: true) { _ in storage }
+
+        try await storage.create()
+
+        mockContainer.mock(type: BlockDownloaderService.self, isSingleton: true) { _ in
+            let repository = ZcashConsoleFakeStorage(latestBlockHeight: 1220000)
+            return BlockDownloaderServiceImpl(service: service, storage: repository)
+        }
+
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: 1210000,
+            walletBirthdayProvider: { 1210000 },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
@@ -227,61 +320,60 @@ class BlockBatchValidationTests: XCTestCase {
         info.saplingActivationHeight = UInt64(3434343)
 
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let expectation = XCTestExpectation(description: "failure expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
+        mockContainer.mock(type: ZcashRustBackendWelding.self, isSingleton: true) { _ in mockBackend.rustBackendMock }
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
-        }
+        let compactBlockProcessor = CompactBlockProcessor(
+            container: mockContainer,
+            config: config
+        )
 
-        operation.errorHandler = { error in
-            expectation.fulfill()
+        do {
+            try await compactBlockProcessor.figureNextBatch(downloaderService: mockContainer.resolve(BlockDownloaderService.self))
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
             switch error {
-            case CompactBlockProcessorError.saplingActivationMismatch(
-                expected: network.constants.saplingActivationHeight,
-                found: BlockHeight(info.saplingActivationHeight)
+            case ZcashError.compactBlockProcessorSaplingActivationMismatch(
+                network.constants.saplingActivationHeight,
+                BlockHeight(info.saplingActivationHeight)
             ):
                 break
             default:
-                XCTFail("Expected CompactBlockProcessorError.saplingActivationMismatch but found \(error)")
+                XCTFail("Expected ZcashError.compactBlockProcessorSaplingActivationMismatch but found \(error)")
             }
         }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, expectation], timeout: 1, enforceOrder: true)
-        XCTAssertNotNil(operation.error)
-        XCTAssertTrue(operation.isCancelled)
     }
-    
-    func testResultIsWait() throws {
+
+    func testResultIsWait() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
-        
+
         let expectedLatestHeight = BlockHeight(1210000)
         let service = MockLightWalletService(
             latestBlockHeight: expectedLatestHeight,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let expectedStoreLatestHeight = BlockHeight(1220000)
-        let expectedResult = FigureNextBatchOperation.NextState.wait(
+        let expectedStoredLatestHeight = BlockHeight(1220000)
+        let expectedResult = CompactBlockProcessor.NextState.wait(
             latestHeight: expectedLatestHeight,
-            latestDownloadHeight: expectedLatestHeight
+            latestDownloadHeight: expectedStoredLatestHeight
         )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoreLatestHeight)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+
+        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoredLatestHeight)
+        let downloaderService = BlockDownloaderServiceImpl(service: service, storage: repository)
+
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: 1210000,
+            walletBirthdayProvider: { 1210000 },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
@@ -295,160 +387,175 @@ class BlockBatchValidationTests: XCTestCase {
         info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
 
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let completedExpectation = XCTestExpectation(description: "completed expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
-        }
-
-        operation.errorHandler = { error in
+        var nextBatch: CompactBlockProcessor.NextState?
+        do {
+            nextBatch = try await CompactBlockProcessor.NextStateHelper.nextState(
+                service: service,
+                downloaderService: downloaderService,
+                latestBlocksDataProvider: LatestBlocksDataProviderMock(
+                    latestScannedHeight: expectedStoredLatestHeight,
+                    latestBlockHeight: expectedLatestHeight
+                ),
+                config: config,
+                rustBackend: mockBackend.rustBackendMock,
+                internalSyncProgress: InternalSyncProgress(
+                    alias: .default,
+                    storage: InternalSyncProgressMemoryStorage(),
+                    logger: logger
+                )
+            )
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
             XCTFail("this shouldn't happen: \(error)")
         }
 
-        operation.completionHandler = { finished, cancelled in
-            completedExpectation.fulfill()
-            XCTAssertTrue(finished)
-            XCTAssertFalse(cancelled)
-        }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, completedExpectation], timeout: 1, enforceOrder: true)
-        XCTAssertNil(operation.error)
-        XCTAssertFalse(operation.isCancelled)
-
-        guard let result = operation.result else {
+        guard nextBatch != nil else {
             XCTFail("result should not be nil")
             return
         }
-        
+
         XCTAssertTrue(
             {
-                switch result {
-                case .wait(latestHeight: expectedLatestHeight, latestDownloadHeight: expectedLatestHeight):
-                    return true
+                switch (nextBatch, expectedResult) {
+                case let (.wait(latestHeight, latestDownloadHeight), .wait(expectedLatestHeight, exectedLatestDownloadHeight)):
+                    return latestHeight == expectedLatestHeight && latestDownloadHeight == exectedLatestDownloadHeight
                 default:
                     return false
                 }
             }(),
-            "Expected \(expectedResult) got: \(result)"
+            "Expected \(expectedResult) got: \(String(describing: nextBatch))"
         )
     }
-    
-    func testResultProcessNew() throws {
+
+    func testResultProcessNew() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
         let expectedLatestHeight = BlockHeight(1230000)
         let service = MockLightWalletService(
             latestBlockHeight: expectedLatestHeight,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let expectedStoreLatestHeight = BlockHeight(1220000)
+        let expectedStoredLatestHeight = BlockHeight(1220000)
         let walletBirthday = BlockHeight(1210000)
-        let expectedResult = FigureNextBatchOperation.NextState.processNewBlocks(
-            range: CompactBlockProcessor.nextBatchBlockRange(
-                latestHeight: expectedLatestHeight,
-                latestDownloadedHeight: expectedStoreLatestHeight,
-                walletBirthday: walletBirthday
+
+        let ranges = SyncRanges(
+            latestBlockHeight: expectedLatestHeight,
+            downloadedButUnscannedRange: nil,
+            downloadAndScanRange: expectedStoredLatestHeight + 1...expectedLatestHeight,
+            enhanceRange: walletBirthday...expectedLatestHeight,
+            fetchUTXORange: walletBirthday...expectedLatestHeight,
+            latestScannedHeight: expectedStoredLatestHeight,
+            latestDownloadedBlockHeight: expectedStoredLatestHeight
+        )
+        let expectedResult = CompactBlockProcessor.NextState.processNewBlocks(ranges: ranges)
+
+        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoredLatestHeight)
+        let downloaderService = BlockDownloaderServiceImpl(service: service, storage: repository)
+        let config = CompactBlockProcessor.Configuration(
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
+            dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
+            downloadBatchSize: 100,
+            retries: 5,
+            maxBackoffInterval: 10,
+            rewindDistance: 100,
+            walletBirthdayProvider: { walletBirthday },
+            saplingActivation: network.constants.saplingActivationHeight,
+            network: network
+        )
+
+        var info = LightdInfo()
+        info.blockHeight = UInt64(expectedLatestHeight)
+        info.branch = "d34db33f"
+        info.chainName = "main"
+        info.buildUser = "test user"
+        info.consensusBranchID = "d34db4d"
+        info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
+
+        service.mockLightDInfo = info
+
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
+
+        var nextBatch: CompactBlockProcessor.NextState?
+        do {
+            nextBatch = try await CompactBlockProcessor.NextStateHelper.nextState(
+                service: service,
+                downloaderService: downloaderService,
+                latestBlocksDataProvider: LatestBlocksDataProviderMock(
+                    latestScannedHeight: expectedStoredLatestHeight,
+                    latestBlockHeight: expectedLatestHeight
+                ),
+                config: config,
+                rustBackend: mockBackend.rustBackendMock,
+                internalSyncProgress: InternalSyncProgress(
+                    alias: .default,
+                    storage: InternalSyncProgressMemoryStorage(),
+                    logger: logger
+                )
             )
-        )
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoreLatestHeight)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
-        let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
-            dataDb: try! __dataDbURL(),
-            downloadBatchSize: 100,
-            retries: 5,
-            maxBackoffInterval: 10,
-            rewindDistance: 100,
-            walletBirthday: walletBirthday,
-            saplingActivation: network.constants.saplingActivationHeight,
-            network: network
-        )
-
-        var info = LightdInfo()
-        info.blockHeight = UInt64(expectedLatestHeight)
-        info.branch = "d34db33f"
-        info.chainName = "main"
-        info.buildUser = "test user"
-        info.consensusBranchID = "d34db4d"
-        info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
-
-        service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
-
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let completedExpectation = XCTestExpectation(description: "completed expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
-
-        operation.startedHandler = {
-            startedExpectation.fulfill()
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
+            XCTFail("this shouldn't happen: \(error)")
         }
 
-        operation.errorHandler = { _ in
-            XCTFail("this shouldn't happen")
-        }
-
-        operation.completionHandler = { finished, cancelled in
-            completedExpectation.fulfill()
-            XCTAssertTrue(finished)
-            XCTAssertFalse(cancelled)
-        }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, completedExpectation], timeout: 1, enforceOrder: true)
-        XCTAssertNil(operation.error)
-        XCTAssertFalse(operation.isCancelled)
-
-        guard let result = operation.result else {
+        guard nextBatch != nil else {
             XCTFail("result should not be nil")
             return
         }
-        
+
         XCTAssertTrue(
             {
-                switch result {
-                case .processNewBlocks(range: CompactBlockRange(uncheckedBounds: (expectedStoreLatestHeight + 1, expectedLatestHeight))):
-                    return true
+                switch (nextBatch, expectedResult) {
+                case let (.processNewBlocks(ranges), .processNewBlocks(expectedRanges)):
+                    return ranges == expectedRanges
                 default:
                     return false
                 }
             }(),
-            "Expected \(expectedResult) got: \(result)"
+            "Expected \(expectedResult) got: \(String(describing: nextBatch))"
         )
     }
-    
-    func testResultProcessorFinished() throws {
+
+    func testResultProcessorFinished() async throws {
         let network = PirateNetworkBuilder.network(for: .mainnet)
         let expectedLatestHeight = BlockHeight(1230000)
         let service = MockLightWalletService(
             latestBlockHeight: expectedLatestHeight,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
+            service: LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
         )
-        let expectedStoreLatestHeight = BlockHeight(1230000)
+        let expectedStoredLatestHeight = BlockHeight(1230000)
         let walletBirthday = BlockHeight(1210000)
-        let expectedResult = FigureNextBatchOperation.NextState.finishProcessing(height: expectedStoreLatestHeight)
-        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoreLatestHeight)
-        let downloader = CompactBlockDownloader(service: service, storage: repository)
+        let expectedResult = CompactBlockProcessor.NextState.finishProcessing(height: expectedStoredLatestHeight)
+        let repository = ZcashConsoleFakeStorage(latestBlockHeight: expectedStoredLatestHeight)
+        let downloaderService = BlockDownloaderServiceImpl(service: service, storage: repository)
         let config = CompactBlockProcessor.Configuration(
-            cacheDb: try!  __cacheDbURL(),
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
             dataDb: try! __dataDbURL(),
+            spendParamsURL: try! __spendParamsURL(),
+            outputParamsURL: try! __outputParamsURL(),
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
             downloadBatchSize: 100,
             retries: 5,
             maxBackoffInterval: 10,
             rewindDistance: 100,
-            walletBirthday: walletBirthday,
+            walletBirthdayProvider: { walletBirthday },
             saplingActivation: network.constants.saplingActivationHeight,
             network: network
         )
+
+        let internalSyncProgress = InternalSyncProgress(
+            alias: .default,
+            storage: InternalSyncProgressMemoryStorage(),
+            logger: logger
+        )
+        await internalSyncProgress.set(expectedStoredLatestHeight, .latestEnhancedHeight)
+        await internalSyncProgress.set(expectedStoredLatestHeight, .latestUTXOFetchedHeight)
 
         var info = LightdInfo()
         info.blockHeight = UInt64(expectedLatestHeight)
@@ -459,49 +566,43 @@ class BlockBatchValidationTests: XCTestCase {
         info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
 
         service.mockLightDInfo = info
-        
-        let mockRust = MockRustBackend.self
-        mockRust.consensusBranchID = 0xd34db4d
 
-        let operation = FigureNextBatchOperation(downloader: downloader, service: service, config: config, rustBackend: mockRust)
-        let completedExpectation = XCTestExpectation(description: "completed expectation")
-        let startedExpectation = XCTestExpectation(description: "start Expectation")
+        let mockBackend = await RustBackendMockHelper(rustBackend: rustBackend, consensusBranchID: 0xd34db4d)
 
-        operation.startedHandler = {
-            startedExpectation.fulfill()
+        var nextBatch: CompactBlockProcessor.NextState?
+        do {
+            nextBatch = try await CompactBlockProcessor.NextStateHelper.nextState(
+                service: service,
+                downloaderService: downloaderService,
+                latestBlocksDataProvider: LatestBlocksDataProviderMock(
+                    latestScannedHeight: expectedStoredLatestHeight,
+                    latestBlockHeight: expectedLatestHeight
+                ),
+                config: config,
+                rustBackend: mockBackend.rustBackendMock,
+                internalSyncProgress: internalSyncProgress
+            )
+
+            XCTAssertFalse(Task.isCancelled)
+        } catch {
+            XCTFail("this shouldn't happen: \(error)")
         }
 
-        operation.errorHandler = { _ in
-            XCTFail("this shouldn't happen")
-        }
-
-        operation.completionHandler = { finished, cancelled in
-            completedExpectation.fulfill()
-            XCTAssertTrue(finished)
-            XCTAssertFalse(cancelled)
-        }
-
-        queue.addOperations([operation], waitUntilFinished: false)
-        
-        wait(for: [startedExpectation, completedExpectation], timeout: 1, enforceOrder: true)
-        XCTAssertNil(operation.error)
-        XCTAssertFalse(operation.isCancelled)
-
-        guard let result = operation.result else {
+        guard nextBatch != nil else {
             XCTFail("result should not be nil")
             return
         }
-        
+
         XCTAssertTrue(
             {
-                switch result {
-                case .finishProcessing(height: expectedLatestHeight):
-                    return true
+                switch (nextBatch, expectedResult) {
+                case let (.finishProcessing(height), .finishProcessing(expectedHeight)):
+                    return height == expectedHeight
                 default:
                     return false
                 }
             }(),
-            "Expected \(expectedResult) got: \(result)"
+            "Expected \(expectedResult) got: \(String(describing: nextBatch))"
         )
     }
 }

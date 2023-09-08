@@ -8,48 +8,23 @@
 
 import Foundation
 
-/**
-A Zcash compact block to store on cache DB
-*/
-public struct ZcashCompactBlock: CompactBlockEntity {
-    public var height: BlockHeight
-    public var data: Data
-}
-
-extension ZcashCompactBlock: Encodable { }
-
 protocol CompactBlockRepository {
+    /// Creates the underlying repository
+    func create() async throws
+
     /**
-    Gets the highest block that is currently stored.
+    Gets the height of the highest block that is currently stored.
     */
-    
-    func latestHeight() throws -> BlockHeight
-    
-    /**
-    Gets the highest block that is currently stored.
-    Non-Blocking
-     
-    - Parameter result: closure resulting on either the latest height or an error
-    */
-    func latestHeight(result: @escaping (Result<BlockHeight, Error>) -> Void)
-    
+    func latestHeight() async -> BlockHeight
+
     /**
     Write the given blocks to this store, which may be anything from an in-memory cache to a DB.
-    Blocking
-    - Parameter blocks: the compact blocks that will be written to storage
-    - Throws: an error when there's a failure
-    */
-    func write(blocks: [ZcashCompactBlock]) throws
-    
-    /**
-    Write the given blocks to this store, which may be anything from an in-memory cache to a DB.
-    Non-Blocking
     - Parameters:
         - Parameter blocks: array of blocks to be written to storage
-        - Parameter completion: a closure that will be called after storing the blocks
+        - Throws: an error when there's a failure
     */
-    func write(blocks: [ZcashCompactBlock], completion: ((Error?) -> Void)?)
-    
+    func write(blocks: [ZcashCompactBlock]) async throws
+
     /**
     Remove every block above and including the given height.
      
@@ -58,18 +33,11 @@ protocol CompactBlockRepository {
      
     - Parameter height: the height to rewind to
     */
-    func rewind(to height: BlockHeight) throws
-    
-    /**
-    Remove every block above and including the given height.
+    func rewind(to height: BlockHeight) async throws
 
-    After this operation, the data store will look the same as one that has not yet stored the given block height.
-    Meaning, if max height is 100 block and rewindTo(50) is called, then the highest block remaining will be 49.
+    /// Clear only blocks with height lower or equal than `height` from the repository.
+    func clear(upTo height: BlockHeight) async throws
 
-    - Parameters:
-    - Parameter height: the height to rewind to
-    - Parameter completion: a closure that will be called after storing the blocks
-
-    */
-    func rewind(to height: BlockHeight, completion: ((Error?) -> Void)?)
+    /// Clears the repository
+    func clear() async throws
 }

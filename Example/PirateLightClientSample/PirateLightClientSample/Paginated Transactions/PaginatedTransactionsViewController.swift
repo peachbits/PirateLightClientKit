@@ -16,7 +16,7 @@ class PaginatedTransactionsViewController: UIViewController {
 
     // swiftlint:disable:next implicitly_unwrapped_optional
     var paginatedRepository: PaginatedTransactionRepository!
-    var transactions: [TransactionEntity] = []
+    var transactions: [ZcashTransaction.Overview] = []
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -32,24 +32,27 @@ class PaginatedTransactionsViewController: UIViewController {
     }
     
     func loadMore(_ pageNumber: Int, _ pageSize: Int, onSuccess: ((Bool) -> Void)?, onError: ((Error) -> Void)?) {
-        // Call your api here
-        // Send true in onSuccess in case new data exists, sending false will disable pagination
-        do {
-            guard let txs = try paginatedRepository.page(pageNumber) else {
-                DispatchQueue.main.async {
-                    onSuccess?(false)
+        Task {
+            // Call your api here
+            // Send true in onSuccess in case new data exists, sending false will disable pagination
+            do {
+                guard let txs = try await paginatedRepository.page(pageNumber) else {
+                    DispatchQueue.main.async {
+                        onSuccess?(false)
+                    }
+                    return
                 }
-                return
-            }
-            if pageNumber == 0 { transactions.removeAll() }
-            
-            transactions.append(contentsOf: txs)
-            DispatchQueue.main.async {
-                onSuccess?(pageNumber < self.paginatedRepository.pageCount)
-            }
-        } catch {
-            DispatchQueue.main.async {
-                onError?(error)
+                if pageNumber == 0 { transactions.removeAll() }
+
+                transactions.append(contentsOf: txs)
+                let pageCount = await self.paginatedRepository.pageCount
+                DispatchQueue.main.async {
+                    onSuccess?(pageNumber < pageCount)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    onError?(error)
+                }
             }
         }
     }
@@ -72,7 +75,8 @@ class PaginatedTransactionsViewController: UIViewController {
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let destination = segue.destination as? TransactionDetailViewController, let row = selectedRow {
-            destination.model = TransactionDetailModel(transaction: transactions[row])
+            let transaction = transactions[row]
+            destination.model = TransactionDetailModel(transaction: transaction, memos: [])
             selectedRow = nil
         }
     }
@@ -87,8 +91,8 @@ extension PaginatedTransactionsViewController: PaginatedTableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: Self.cellIdentifier, for: indexPath)
         
         let transaction = transactions[indexPath.row]
-        cell.detailTextLabel?.text = transaction.transactionId.toHexStringTxId()
-        cell.textLabel?.text = transaction.created ?? "No date"
+        cell.detailTextLabel?.text = transaction.rawID.toHexStringTxId()
+        cell.textLabel?.text = transaction.blockTime?.description
         
         return cell
     }

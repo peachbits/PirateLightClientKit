@@ -20,15 +20,11 @@ This is an alpha build and is currently under active development. Please be advi
 
 ## Swift Package Manager
 
-Add a package with the source "https://github.com/piratenetwork/PirateLightClientKit.git" and from version `0.13.0` onwards in either Xcode's GUI or in your `Package.swift` file.
+Add a package with the source "https://github.com/zcash/PirateLightClientKit.git" and from version `0.14.0-beta` onwards in either Xcode's GUI or in your `Package.swift` file.
 
 ### Beta version support for Xcode projects
 
-If you want to include a beta version of `PirateLightClientKit` in an Xcode project e.g `0.14.3-beta` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
-
-## Cocoapods Support
-
-Add `pod "PirateLightClientKit", ~> "0.14.3-beta"` to the target you want to add the kit too.
+If you want to include a beta version of `PirateLightClientKit` in an Xcode project e.g `0.14.0-beta` you will need to specify it with the commit sha instead as it does not appear that Xcode supports 'meta data' from semantic version strings for swift packages (at the time of writing).
 
 # Testing
 
@@ -75,9 +71,15 @@ public protocol Logger {
 
 }
 ```
-To enable logging you need to do 2 simple steps:
-1. have one class conform the `Logger` protocol
-2. inject that logger when creating the `Initializer`
+
+You have a few different options when it comes to logging:
+1. Leave it to the SDK. It will use its own `Logger` with sensible defaults. For this option, simply omit the `loggingPolicy` parameter when creating the `Initializer`
+
+2. Provide a custom logger. For this option, do the following:
+    a). have one class conform to the `Logger` protocol
+    b). inject that logger when creating the `Initializer` by passing a `loggingPolicy` of `.custom(yourLogger)`
+
+3. No logging. The SDK will not log any events. For this option, pass a `loggingPolicy` of `.noLogging` when creating the `Initializer`
 
 For more details look the Sample App's `AppDelegate` code.
 

@@ -6,36 +6,64 @@
 //
 //  Copyright © 2019 Electric Coin Company. All rights reserved.
 
+import Combine
 import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional force_try
-class CompactBlockReorgTests: XCTestCase {
-    let processorConfig = CompactBlockProcessor.Configuration.standard(
-        for: PirateNetworkBuilder.network(for: .testnet),
-        walletBirthday: PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight
-    )
+class CompactBlockReorgTests: ZcashTestCase {
+    var processorConfig: CompactBlockProcessor.Configuration!
+    let testFileManager = FileManager()
+    var cancellables: [AnyCancellable] = []
+    var processorEventHandler: CompactBlockProcessorEventHandler! = CompactBlockProcessorEventHandler()
+    var rustBackend: ZcashRustBackendWelding!
+    var rustBackendMockHelper: RustBackendMockHelper!
     var processor: CompactBlockProcessor!
-    var downloadStartedExpect: XCTestExpectation!
+    var syncStartedExpect: XCTestExpectation!
     var updatedNotificationExpectation: XCTestExpectation!
     var stopNotificationExpectation: XCTestExpectation!
-    var startedScanningNotificationExpectation: XCTestExpectation!
-    var startedValidatingNotificationExpectation: XCTestExpectation!
-    var idleNotificationExpectation: XCTestExpectation!
+    var finishedNotificationExpectation: XCTestExpectation!
     var reorgNotificationExpectation: XCTestExpectation!
     let network = PirateNetworkBuilder.network(for: .testnet)
     let mockLatestHeight = PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight + 2000
-    
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        logger = SampleLogger(logLevel: .debug)
-        
+    var testTempDirectory: URL!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        testTempDirectory = Environment.uniqueTestTempDirectory
+
+        logger = OSLogger(logLevel: .debug)
+        try? FileManager.default.removeItem(at: testTempDirectory)
+
+        try self.testFileManager.createDirectory(at: testTempDirectory, withIntermediateDirectories: false)
+
+        let pathProvider = DefaultResourceProvider(network: network)
+        processorConfig = CompactBlockProcessor.Configuration(
+            alias: .default,
+            fsBlockCacheRoot: testTempDirectory,
+            dataDb: pathProvider.dataDbURL,
+            spendParamsURL: pathProvider.spendParamsURL,
+            outputParamsURL: pathProvider.outputParamsURL,
+            saplingParamsSourceURL: SaplingParamsSourceURL.tests,
+            walletBirthdayProvider: { PirateNetworkBuilder.network(for: .testnet).constants.saplingActivationHeight },
+            network: PirateNetworkBuilder.network(for: .testnet)
+        )
+
+        await InternalSyncProgress(alias: .default, storage: UserDefaults.standard, logger: logger).rewind(to: 0)
+
+        let liveService = LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.eccTestnet).make()
         let service = MockLightWalletService(
             latestBlockHeight: mockLatestHeight,
-            service: LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.eccTestnet)
+            service: liveService
         )
-        let branchID = try ZcashRustBackend.consensusBranchIdFor(height: Int32(mockLatestHeight), networkType: network.networkType)
+
+        rustBackend = ZcashRustBackend.makeForTests(
+            dbData: processorConfig.dataDb,
+            fsBlockDbRoot: processorConfig.fsBlockCacheRoot,
+            networkType: network.networkType
+        )
+
+        let branchID = try rustBackend.consensusBranchIdFor(height: Int32(mockLatestHeight))
         service.mockLightDInfo = LightdInfo.with { info in
             info.blockHeight = UInt64(mockLatestHeight)
             info.branch = "asdf"
@@ -46,69 +74,96 @@ class CompactBlockReorgTests: XCTestCase {
             info.estimatedHeight = UInt64(mockLatestHeight)
             info.saplingActivationHeight = UInt64(network.constants.saplingActivationHeight)
         }
-        
-        try ZcashRustBackend.initDataDb(dbData: processorConfig.dataDb, networkType: .testnet)
-        
-        let storage = CompactBlockStorage.init(connectionProvider: SimpleConnectionProvider(path: processorConfig.cacheDb.absoluteString))
-        try! storage.createTable()
-        
-        let mockBackend = MockRustBackend.self
-        mockBackend.mockValidateCombinedChainFailAfterAttempts = 3
-        mockBackend.mockValidateCombinedChainKeepFailing = false
-        mockBackend.mockValidateCombinedChainFailureHeight = self.network.constants.saplingActivationHeight + 320
-        
-        processor = CompactBlockProcessor(
-            service: service,
-            storage: storage,
-            backend: mockBackend,
-            config: processorConfig
-        )
-        
-        downloadStartedExpect = XCTestExpectation(description: "\(self.description) downloadStartedExpect")
-        stopNotificationExpectation = XCTestExpectation(description: "\(self.description) stopNotificationExpectation")
-        updatedNotificationExpectation = XCTestExpectation(description: "\(self.description) updatedNotificationExpectation")
-        startedValidatingNotificationExpectation = XCTestExpectation(
-            description: "\(self.description) startedValidatingNotificationExpectation"
-        )
-        startedScanningNotificationExpectation = XCTestExpectation(
-            description: "\(self.description) startedScanningNotificationExpectation"
-        )
-        idleNotificationExpectation = XCTestExpectation(description: "\(self.description) idleNotificationExpectation")
-        reorgNotificationExpectation = XCTestExpectation(description: "\(self.description) reorgNotificationExpectation")
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(processorHandledReorg(_:)),
-            name: Notification.Name.blockProcessorHandledReOrg,
-            object: processor
+
+        let realCache = FSCompactBlockRepository(
+            fsBlockDbRoot: processorConfig.fsBlockCacheRoot,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: processorConfig.fsBlockCacheRoot,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
         )
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(processorFailed(_:)),
-            name: Notification.Name.blockProcessorFailed,
-            object: processor
+        try await realCache.create()
+
+        let initResult = try await rustBackend.initDataDb(seed: nil)
+        guard case .success = initResult else {
+            XCTFail("initDataDb failed. Expected Success but got .seedRequired")
+            return
+        }
+
+        rustBackendMockHelper = await RustBackendMockHelper(
+            rustBackend: rustBackend,
+            mockValidateCombinedChainFailAfterAttempts: 3,
+            mockValidateCombinedChainKeepFailing: false,
+            mockValidateCombinedChainFailureError: .rustValidateCombinedChainInvalidChain(Int32(network.constants.saplingActivationHeight + 320))
         )
+
+        let transactionRepository = MockTransactionRepository(
+            unminedCount: 0,
+            receivedCount: 0,
+            sentCount: 0,
+            scannedHeight: 0,
+            network: network
+        )
+
+        Dependencies.setup(
+            in: mockContainer,
+            urls: Initializer.URLs(
+                fsBlockDbRoot: testTempDirectory,
+                dataDbURL: processorConfig.dataDb,
+                spendParamsURL: processorConfig.spendParamsURL,
+                outputParamsURL: processorConfig.outputParamsURL
+            ),
+            alias: .default,
+            networkType: .testnet,
+            endpoint: LightWalletEndpointBuilder.default,
+            loggingPolicy: .default(.debug)
+        )
+
+        mockContainer.mock(type: LatestBlocksDataProvider.self, isSingleton: true) { _ in
+            LatestBlocksDataProviderImpl(service: service, transactionRepository: transactionRepository)
+        }
+        mockContainer.mock(type: ZcashRustBackendWelding.self, isSingleton: true) { _ in self.rustBackendMockHelper.rustBackendMock }
+        mockContainer.mock(type: LightWalletService.self, isSingleton: true) { _ in service }
+        mockContainer.mock(type: CompactBlockRepository.self, isSingleton: true) { _ in realCache }
+
+        processor = CompactBlockProcessor(container: mockContainer, config: processorConfig)
+
+        syncStartedExpect = XCTestExpectation(description: "\(self.description) syncStartedExpect")
+        stopNotificationExpectation = XCTestExpectation(description: "\(self.description) stopNotificationExpectation")
+        updatedNotificationExpectation = XCTestExpectation(description: "\(self.description) updatedNotificationExpectation")
+        finishedNotificationExpectation = XCTestExpectation(description: "\(self.description) finishedNotificationExpectation")
+        reorgNotificationExpectation = XCTestExpectation(description: "\(self.description) reorgNotificationExpectation")
+
+        let eventClosure: CompactBlockProcessor.EventClosure = { [weak self] event in
+            switch event {
+            case .failed: self?.processorFailed(event: event)
+            case .handledReorg: self?.processorHandledReorg(event: event)
+            default: break
+            }
+        }
+
+        await self.processor.updateEventClosure(identifier: "tests", closure: eventClosure)
     }
-    
-    override func tearDown() {
-        super.tearDown()
-        try! FileManager.default.removeItem(at: processorConfig.cacheDb)
+
+    override func tearDown() async throws {
+        try await super.tearDown()
+        await processor.stop()
+        try! FileManager.default.removeItem(at: processorConfig.fsBlockCacheRoot)
         try? FileManager.default.removeItem(at: processorConfig.dataDb)
-        downloadStartedExpect.unsubscribeFromNotifications()
-        stopNotificationExpectation.unsubscribeFromNotifications()
-        updatedNotificationExpectation.unsubscribeFromNotifications()
-        startedScanningNotificationExpectation.unsubscribeFromNotifications()
-        startedValidatingNotificationExpectation.unsubscribeFromNotifications()
-        idleNotificationExpectation.unsubscribeFromNotifications()
-        reorgNotificationExpectation.unsubscribeFromNotifications()
-        NotificationCenter.default.removeObserver(self)
+        cancellables = []
+        processorEventHandler = nil
+        processor = nil
+        rustBackend = nil
+        rustBackendMockHelper = nil
     }
-    
-    @objc func processorHandledReorg(_ notification: Notification) {
-        XCTAssertNotNil(notification.userInfo)
-        if  let reorg = notification.userInfo?[CompactBlockProcessorNotificationKey.reorgHeight] as? BlockHeight,
-            let rewind = notification.userInfo?[CompactBlockProcessorNotificationKey.rewindHeight] as? BlockHeight {
+
+    func processorHandledReorg(event: CompactBlockProcessor.Event) {
+        if case let .handledReorg(reorg, rewind) = event {
             XCTAssertTrue( reorg == 0 || reorg > self.network.constants.saplingActivationHeight)
             XCTAssertTrue( rewind == 0 || rewind > self.network.constants.saplingActivationHeight)
             XCTAssertTrue( rewind <= reorg )
@@ -117,47 +172,44 @@ class CompactBlockReorgTests: XCTestCase {
             XCTFail("CompactBlockProcessor reorg notification is malformed")
         }
     }
-    
-    @objc func processorFailed(_ notification: Notification) {
-        XCTAssertNotNil(notification.userInfo)
-        if let error = notification.userInfo?["error"] {
+
+    func processorFailed(event: CompactBlockProcessor.Event) {
+        if case let .failed(error) = event {
             XCTFail("CompactBlockProcessor failed with Error: \(error)")
         } else {
             XCTFail("CompactBlockProcessor failed")
         }
     }
-    
-    private func startProcessing() {
-        XCTAssertNotNil(processor)
-        
-        // Subscribe to notifications
-        downloadStartedExpect.subscribe(to: Notification.Name.blockProcessorStartedDownloading, object: processor)
-        stopNotificationExpectation.subscribe(to: Notification.Name.blockProcessorStopped, object: processor)
-        updatedNotificationExpectation.subscribe(to: Notification.Name.blockProcessorUpdated, object: processor)
-        startedValidatingNotificationExpectation.subscribe(to: Notification.Name.blockProcessorStartedValidating, object: processor)
-        startedScanningNotificationExpectation.subscribe(to: Notification.Name.blockProcessorStartedScanning, object: processor)
-        idleNotificationExpectation.subscribe(to: Notification.Name.blockProcessorFinished, object: processor)
-        reorgNotificationExpectation.subscribe(to: Notification.Name.blockProcessorHandledReOrg, object: processor)
-        
-        XCTAssertNoThrow(try processor.start())
-    }
-    
-    func testNotifiesReorg() {
-        startProcessing()
 
-        wait(
-            for: [
-                downloadStartedExpect,
-                startedValidatingNotificationExpectation,
-                startedScanningNotificationExpectation,
+    private func startProcessing() async {
+        XCTAssertNotNil(processor)
+
+        let expectations: [CompactBlockProcessorEventHandler.EventIdentifier: XCTestExpectation] = [
+            .startedSyncing: syncStartedExpect,
+            .stopped: stopNotificationExpectation,
+            .progressUpdated: updatedNotificationExpectation,
+            .finished: finishedNotificationExpectation,
+            .handleReorg: reorgNotificationExpectation
+        ]
+
+        await processorEventHandler.subscribe(to: processor, expectations: expectations)
+        await processor.start()
+    }
+
+    func testNotifiesReorg() async {
+        await startProcessing()
+
+        await fulfillment(
+            of: [
+                syncStartedExpect,
                 reorgNotificationExpectation,
-                idleNotificationExpectation
+                finishedNotificationExpectation
             ],
             timeout: 300,
             enforceOrder: true
         )
     }
-    
+
     private func expectedBatches(currentHeight: BlockHeight, targetHeight: BlockHeight, batchSize: Int) -> Int {
         (abs(currentHeight - targetHeight) / batchSize)
     }

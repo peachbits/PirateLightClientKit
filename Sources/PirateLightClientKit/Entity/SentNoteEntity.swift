@@ -8,13 +8,14 @@
 import Foundation
 
 protocol SentNoteEntity {
-    var id: Int { get set }
-    var transactionId: Int { get set }
-    var outputIndex: Int { get set }
-    var account: Int { get set }
-    var address: String { get set }
-    var value: Int { get set }
-    var memo: Data? { get set }
+    var id: Int { get }
+    var transactionId: Int { get }
+    var outputIndex: Int { get }
+    var fromAccount: Int { get }
+    var toAddress: String? { get }
+    var toAccount: Int? { get }
+    var value: Int { get }
+    var memo: Data? { get }
 }
     
 extension SentNoteEntity {
@@ -22,8 +23,9 @@ extension SentNoteEntity {
         guard lhs.id == rhs.id,
             lhs.transactionId == rhs.transactionId,
             lhs.outputIndex == rhs.outputIndex,
-            lhs.account == rhs.account,
-            lhs.address == rhs.address,
+            lhs.fromAccount == rhs.fromAccount,
+            lhs.toAddress == rhs.toAddress,
+            lhs.toAccount == rhs.toAccount,
             lhs.value == rhs.value,
             lhs.memo == rhs.memo else { return false }
         return true
@@ -33,10 +35,11 @@ extension SentNoteEntity {
         hasher.combine(id)
         hasher.combine(transactionId)
         hasher.combine(outputIndex)
-        hasher.combine(account)
-        hasher.combine(address)
+        hasher.combine(fromAccount)
+        hasher.combine(toAddress)
+        hasher.combine(toAccount)
         hasher.combine(value)
-        if let memo = memo {
+        if let memo {
             hasher.combine(memo)
         } else {
             hasher.combine(Int(0))

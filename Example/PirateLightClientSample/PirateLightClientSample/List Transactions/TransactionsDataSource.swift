@@ -32,35 +32,48 @@ class TransactionsDataSource: NSObject {
         self.synchronizer = synchronizer
     }
 
-    func load() {
+    // swiftlint:disable:next cyclomatic_complexity
+    func load() async throws {
+        transactions = []
         switch status {
         case .pending:
-            transactions = synchronizer.pendingTransactions.map {
-                TransactionDetailModel(pendingTransaction: $0)
+            let rawTransactions = await synchronizer.pendingTransactions
+            for pendingTransaction in rawTransactions {
+                let memos = try await synchronizer.getMemos(for: pendingTransaction)
+                transactions.append(TransactionDetailModel(pendingTransaction: pendingTransaction, memos: memos))
             }
+
         case .cleared:
-            transactions = synchronizer.clearedTransactions.map {
-                TransactionDetailModel(confirmedTransaction: $0)
+            let rawTransactions = await synchronizer.transactions
+            for transaction in rawTransactions {
+                let memos = try await synchronizer.getMemos(for: transaction)
+                transactions.append(TransactionDetailModel(transaction: transaction, memos: memos))
             }
         case .received:
-            transactions = synchronizer.receivedTransactions.map {
-                TransactionDetailModel(confirmedTransaction: $0)
+            let rawTransactions = await synchronizer.receivedTransactions
+            for transaction in rawTransactions {
+                let memos = try await synchronizer.getMemos(for: transaction)
+                transactions.append(TransactionDetailModel(receivedTransaction: transaction, memos: memos))
             }
         case .sent:
-            transactions = synchronizer.sentTransactions.map {
-                TransactionDetailModel(confirmedTransaction: $0)
+            let rawTransactions = await synchronizer.sentTransactions
+            for transaction in rawTransactions {
+                let memos = try await synchronizer.getMemos(for: transaction)
+                transactions.append(TransactionDetailModel(sendTransaction: transaction, memos: memos))
             }
         case .all:
-            transactions = (
-                synchronizer.pendingTransactions.map { $0.transactionEntity } +
-                synchronizer.clearedTransactions.map { $0.transactionEntity }
-            )
-            .map { TransactionDetailModel(transaction: $0) }
+            let rawPendingTransactions = await synchronizer.pendingTransactions
+            for pendingTransaction in rawPendingTransactions {
+                let memos = try await synchronizer.getMemos(for: pendingTransaction)
+                transactions.append(TransactionDetailModel(pendingTransaction: pendingTransaction, memos: memos))
+            }
+
+            let rawClearedTransactions = await synchronizer.transactions
+            for transaction in rawClearedTransactions {
+                let memos = try await synchronizer.getMemos(for: transaction)
+                transactions.append(TransactionDetailModel(transaction: transaction, memos: memos))
+            }
         }
-    }
-    
-    func transactionString(_ transcation: TransactionEntity) -> String {
-        transcation.transactionId.toHexStringTxId()
     }
 }
 
@@ -75,9 +88,10 @@ extension TransactionsDataSource: UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: Self.cellIdentifier, for: indexPath)
 
         let transaction = transactions[indexPath.row]
-        cell.detailTextLabel?.text = transaction.id ?? "no id"
-        cell.textLabel?.text = transaction.created ?? "No date"
+        cell.detailTextLabel?.text = transaction.id?.toHexStringTxId() ?? "no id"
+        cell.textLabel?.text = "\(transaction.dateDescription) \t\(transaction.amountDescription)"
 
+        cell.accessoryType = .disclosureIndicator
         return cell
     }
 }

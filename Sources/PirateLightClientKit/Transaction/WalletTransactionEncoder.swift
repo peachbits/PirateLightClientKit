@@ -8,209 +8,158 @@
 import Foundation
 
 class WalletTransactionEncoder: TransactionEncoder {
-    var rustBackend: ZcashRustBackendWelding.Type
-    var repository: TransactionRepository
-    var queue: DispatchQueue
+    let lightWalletService: LightWalletService
+    let rustBackend: ZcashRustBackendWelding
+    let repository: TransactionRepository
+    let logger: Logger
 
-    private var outputParamsURL: URL
-    private var spendParamsURL: URL
-    private var dataDbURL: URL
-    private var cacheDbURL: URL
-    private var networkType: NetworkType
+    private let outputParamsURL: URL
+    private let spendParamsURL: URL
+    private let dataDbURL: URL
+    private let fsBlockDbRoot: URL
+    private let networkType: NetworkType
     
     init(
-        rust: ZcashRustBackendWelding.Type,
+        rustBackend: ZcashRustBackendWelding,
         dataDb: URL,
-        cacheDb: URL,
+        fsBlockDbRoot: URL,
+        service: LightWalletService,
         repository: TransactionRepository,
         outputParams: URL,
         spendParams: URL,
-        networkType: NetworkType
+        networkType: NetworkType,
+        logger: Logger
     ) {
-        self.rustBackend = rust
+        self.rustBackend = rustBackend
         self.dataDbURL = dataDb
-        self.cacheDbURL = cacheDb
+        self.fsBlockDbRoot = fsBlockDbRoot
+        self.lightWalletService = service
         self.repository = repository
         self.outputParamsURL = outputParams
         self.spendParamsURL = spendParams
         self.networkType = networkType
-        self.queue = DispatchQueue(label: "wallet.transaction.encoder.serial.queue")
+        self.logger = logger
     }
     
     convenience init(initializer: Initializer) {
         self.init(
-            rust: initializer.rustBackend,
+            rustBackend: initializer.rustBackend,
             dataDb: initializer.dataDbURL,
-            cacheDb: initializer.cacheDbURL,
+            fsBlockDbRoot: initializer.fsBlockDbRoot,
+            service: initializer.lightWalletService,
             repository: initializer.transactionRepository,
             outputParams: initializer.outputParamsURL,
             spendParams: initializer.spendParamsURL,
-            networkType: initializer.network.networkType
+            networkType: initializer.network.networkType,
+            logger: initializer.logger
         )
     }
     
     func createTransaction(
-        spendingKey: String,
-        zatoshi: Int,
+        spendingKey: UnifiedSpendingKey,
+        zatoshi: Zatoshi,
         to address: String,
-        memo: String?,
+        memoBytes: MemoBytes?,
         from accountIndex: Int
-    ) throws -> EncodedTransaction {
-        let txId = try createSpend(
+    ) async throws -> ZcashTransaction.Overview {
+        let txId = try await createSpend(
             spendingKey: spendingKey,
             zatoshi: zatoshi,
             to: address,
-            memo: memo,
+            memoBytes: memoBytes,
             from: accountIndex
         )
-        
-        do {
-            let transactionEntity = try repository.findBy(id: txId)
-            guard let transaction = transactionEntity else {
-                throw TransactionEncoderError.notFound(transactionId: txId)
-            }
 
-            LoggerProxy.debug("sentTransaction id: \(txId)")
-
-            return EncodedTransaction(transactionId: transaction.transactionId, raw: transaction.raw)
-        } catch {
-            throw TransactionEncoderError.notFound(transactionId: txId)
-        }
-    }
-
-    // swiftlint:disable:next function_parameter_count
-    func createTransaction(
-        spendingKey: String,
-        zatoshi: Int,
-        to address: String,
-        memo: String?,
-        from accountIndex: Int,
-        result: @escaping TransactionEncoderResultBlock
-    ) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            do {
-                result(
-                    .success(
-                        try self.createTransaction(
-                            spendingKey: spendingKey,
-                            zatoshi: zatoshi,
-                            to: address,
-                            memo: memo,
-                            from: accountIndex
-                        )
-                    )
-                )
-            } catch {
-                result(.failure(error))
-            }
-        }
+        logger.debug("transaction id: \(txId)")
+        return try await repository.find(id: txId)
     }
     
-    func createSpend(spendingKey: String, zatoshi: Int, to address: String, memo: String?, from accountIndex: Int) throws -> Int {
-        guard ensureParams(spend: self.spendParamsURL, output: self.spendParamsURL) else {
-            throw TransactionEncoderError.missingParams
+    func createSpend(
+        spendingKey: UnifiedSpendingKey,
+        zatoshi: Zatoshi,
+        to address: String,
+        memoBytes: MemoBytes?,
+        from accountIndex: Int
+    ) async throws -> Int {
+        guard ensureParams(spend: self.spendParamsURL, output: self.outputParamsURL) else {
+            throw ZcashError.walletTransEncoderCreateTransactionMissingSaplingParams
         }
-                
-        let txId = rustBackend.createToAddress(
-            dbData: self.dataDbURL,
-            account: Int32(accountIndex),
-            extsk: spendingKey,
+
+        let txId = try await rustBackend.createToAddress(
+            usk: spendingKey,
             to: address,
-            value: Int64(zatoshi),
-            memo: memo,
-            spendParamsPath: self.spendParamsURL.path,
-            outputParamsPath: self.outputParamsURL.path,
-            networkType: networkType
+            value: zatoshi.amount,
+            memo: memoBytes
         )
-        
-        guard txId > 0 else {
-            throw rustBackend.lastError() ?? RustWeldingError.genericError(message: "create spend failed")
-        }
-        
+
         return Int(txId)
     }
     
     func createShieldingTransaction(
-        spendingKey: String,
-        tSecretKey: String,
-        memo: String?,
+        spendingKey: UnifiedSpendingKey,
+        shieldingThreshold: Zatoshi,
+        memoBytes: MemoBytes?,
         from accountIndex: Int
-    ) throws -> EncodedTransaction {
-        let txId = try createShieldingSpend(
+    ) async throws -> ZcashTransaction.Overview {
+        let txId = try await createShieldingSpend(
             spendingKey: spendingKey,
-            tsk: tSecretKey,
-            memo: memo,
+            shieldingThreshold: shieldingThreshold,
+            memo: memoBytes,
             accountIndex: accountIndex
         )
         
-        do {
-            let transactionEntity = try repository.findBy(id: txId)
-            
-            guard let transaction = transactionEntity else {
-                throw TransactionEncoderError.notFound(transactionId: txId)
-            }
-            
-            LoggerProxy.debug("sentTransaction id: \(txId)")
-            return EncodedTransaction(transactionId: transaction.transactionId, raw: transaction.raw)
-        } catch {
-            throw TransactionEncoderError.notFound(transactionId: txId)
-        }
+        logger.debug("transaction id: \(txId)")
+        return try await repository.find(id: txId)
     }
-    
-    func createShieldingTransaction(
-        spendingKey: String,
-        tSecretKey: String,
-        memo: String?,
-        from accountIndex: Int,
-        result: @escaping TransactionEncoderResultBlock
-    ) {
-        queue.async {
-            result(.failure(RustWeldingError.genericError(message: "not implemented")))
-        }
-    }
-    
-    func createShieldingSpend(spendingKey: String, tsk: String, memo: String?, accountIndex: Int) throws -> Int {
-        guard ensureParams(spend: self.spendParamsURL, output: self.spendParamsURL) else {
-            throw TransactionEncoderError.missingParams
+
+    func createShieldingSpend(
+        spendingKey: UnifiedSpendingKey,
+        shieldingThreshold: Zatoshi,
+        memo: MemoBytes?,
+        accountIndex: Int
+    ) async throws -> Int {
+        guard ensureParams(spend: self.spendParamsURL, output: self.outputParamsURL) else {
+            throw ZcashError.walletTransEncoderShieldFundsMissingSaplingParams
         }
         
-        let txId = rustBackend.shieldFunds(
-            dbCache: self.cacheDbURL,
-            dbData: self.dataDbURL,
-            account: Int32(accountIndex),
-            tsk: tsk,
-            extsk: spendingKey,
+        let txId = try await rustBackend.shieldFunds(
+            usk: spendingKey,
             memo: memo,
-            spendParamsPath: self.spendParamsURL.path,
-            outputParamsPath: self.outputParamsURL.path,
-            networkType: networkType
+            shieldingThreshold: shieldingThreshold
         )
-        
-        guard txId > 0 else {
-            throw rustBackend.lastError() ?? RustWeldingError.genericError(message: "create spend failed")
-        }
-        
+                
         return Int(txId)
     }
-    
+
+    func submit(
+        transaction: EncodedTransaction
+    ) async throws {
+        let response = try await self.lightWalletService.submit(spendTransaction: transaction.raw)
+
+        guard response.errorCode >= 0 else {
+            throw TransactionEncoderError.submitError(code: Int(response.errorCode), message: response.errorMessage)
+        }
+    }
+
     func ensureParams(spend: URL, output: URL) -> Bool {
         let readableSpend = FileManager.default.isReadableFile(atPath: spend.path)
         let readableOutput = FileManager.default.isReadableFile(atPath: output.path)
         
-        return readableSpend && readableOutput // Todo: change this to something that makes sense
+        // TODO: [#713] change this to something that makes sense, https://github.com/zcash/PirateLightClientKit/issues/713
+        return readableSpend && readableOutput
     }
-    
-    /**
-    Fetch the Transaction Entity from the encoded representation
-    - Parameter encodedTransaction: The encoded transaction to expand
-    - Returns: a TransactionEntity based on the given Encoded Transaction
-    - Throws: a TransactionEncoderError
-    */
-    func expandEncodedTransaction(_ encodedTransaction: EncodedTransaction) throws -> TransactionEntity {
-        guard let transaction = try? repository.findBy(rawId: encodedTransaction.transactionId) else {
-            throw TransactionEncoderError.couldNotExpand(txId: encodedTransaction.transactionId)
+
+    func closeDBConnection() {
+        self.repository.closeDBConnection()
+    }
+}
+
+extension ZcashTransaction.Overview {
+    func encodedTransaction() throws -> EncodedTransaction {
+        guard let raw else {
+            throw TransactionEncoderError.notEncoded(transactionId: self.id)
         }
-        return transaction
+
+        return EncodedTransaction(transactionId: self.rawID, raw: raw)
     }
 }

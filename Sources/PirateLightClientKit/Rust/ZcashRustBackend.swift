@@ -9,175 +9,400 @@
 import Foundation
 import libpiratelc
 
-class ZcashRustBackend: ZcashRustBackendWelding {
-    static func lastError() -> RustWeldingError? {
-        guard let message = getLastError() else { return nil }
+actor ZcashRustBackend: ZcashRustBackendWelding {
+    let minimumConfirmations: UInt32 = 10
+    let useZIP317Fees = false
 
-        piratelc_clear_last_error()
+    let dbData: (String, UInt)
+    let fsBlockDbRoot: (String, UInt)
+    let spendParamsPath: (String, UInt)
+    let outputParamsPath: (String, UInt)
+    let keyDeriving: ZcashKeyDerivationBackendWelding
 
-        if message.contains("couldn't load Sapling spend parameters") {
-            return RustWeldingError.saplingSpendParametersNotFound
-        } else if message.contains("is not empty") {
-            return RustWeldingError.dataDbNotEmpty
-        }
+    nonisolated let networkType: NetworkType
 
-        return RustWeldingError.genericError(message: message)
+    /// Creates instance of `ZcashRustBackend`.
+    /// - Parameters:
+    ///   - dbData: `URL` pointing to file where data database will be.
+    ///   - fsBlockDbRoot: `URL` pointing to the filesystem root directory where the fsBlock cache is.
+    ///                    this directory  is expected to contain a `/blocks` sub-directory with the blocks stored in the convened filename
+    ///                    format `{height}-{hash}-block`. This directory has must be granted both write and read permissions.
+    ///   - spendParamsPath: `URL` pointing to spend parameters file.
+    ///   - outputParamsPath: `URL` pointing to output parameters file.
+    ///   - networkType: Network type to use.
+    init(dbData: URL, fsBlockDbRoot: URL, spendParamsPath: URL, outputParamsPath: URL, networkType: NetworkType) {
+        self.dbData = dbData.osStr()
+        self.fsBlockDbRoot = fsBlockDbRoot.osPathStr()
+        self.spendParamsPath = spendParamsPath.osPathStr()
+        self.outputParamsPath = outputParamsPath.osPathStr()
+        self.networkType = networkType
+        self.keyDeriving = ZcashKeyDerivationBackend(networkType: networkType)
     }
-    
-    static func getLastError() -> String? {
-        let errorLen = piratelc_last_error_length()
-        if errorLen > 0 {
-            let error = UnsafeMutablePointer<Int8>.allocate(capacity: Int(errorLen))
-            piratelc_error_message_utf8(error, errorLen)
-            piratelc_clear_last_error()
-            return String(validatingUTF8: error)
-        } else {
-            return nil
-        }
-    }
-    
-    /**
-    * Sets up the internal structure of the data database.
-    */
-    static func initDataDb(dbData: URL, networkType: NetworkType) throws {
-        let dbData = dbData.osStr()
-        guard piratelc_init_data_database(dbData.0, dbData.1, networkType.networkId) != 0 else {
-            if let error = lastError() {
-                throw throwDataDbError(error)
-            }
-            throw RustWeldingError.dataDbInitFailed(message: "unknown error")
-        }
-    }
-    
-    static func isValidShieldedAddress(_ address: String, networkType: NetworkType) throws -> Bool {
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            return false
-        }
-        
-        guard piratelc_is_valid_shielded_address([CChar](address.utf8CString), networkType.networkId) else {
-            if let error = lastError() {
-                throw error
-            }
-            return false
+
+    func createAccount(seed: [UInt8]) async throws -> UnifiedSpendingKey {
+        let ffiBinaryKeyPtr = piratelc_create_account(
+            dbData.0,
+            dbData.1,
+            seed,
+            UInt(seed.count),
+            networkType.networkId
+        )
+
+        guard let ffiBinaryKeyPtr else {
+            throw ZcashError.rustCreateAccount(lastErrorMessage(fallback: "`createAccount` failed with unknown error"))
         }
 
-        return true
+        defer { piratelc_free_binary_key(ffiBinaryKeyPtr) }
+
+        return ffiBinaryKeyPtr.pointee.unsafeToUnifiedSpendingKey(network: networkType)
     }
-    
-    static func isValidTransparentAddress(_ address: String, networkType: NetworkType) throws -> Bool {
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            return false
-        }
-        
-        guard piratelc_is_valid_transparent_address([CChar](address.utf8CString), networkType.networkId ) else {
-            if let error = lastError() {
-                throw error
-            }
-            return false
+
+    func createToAddress(
+        usk: UnifiedSpendingKey,
+        to address: String,
+        value: Int64,
+        memo: MemoBytes?
+    ) async throws -> Int64 {
+        let result = usk.bytes.withUnsafeBufferPointer { uskPtr in
+            piratelc_create_to_address(
+                dbData.0,
+                dbData.1,
+                uskPtr.baseAddress,
+                UInt(usk.bytes.count),
+                [CChar](address.utf8CString),
+                value,
+                memo?.bytes,
+                spendParamsPath.0,
+                spendParamsPath.1,
+                outputParamsPath.0,
+                outputParamsPath.1,
+                networkType.networkId,
+                minimumConfirmations,
+                useZIP317Fees
+            )
         }
 
-        return true
-    }
-    
-    static func isValidExtendedFullViewingKey(_ key: String, networkType: NetworkType) throws -> Bool {
-        guard !key.containsCStringNullBytesBeforeStringEnding() else {
-            return false
-        }
-        
-        guard piratelc_is_valid_viewing_key([CChar](key.utf8CString), networkType.networkId) else {
-            if let error = lastError() {
-                throw error
-            }
-            return false
+        guard result > 0 else {
+            throw ZcashError.rustCreateToAddress(lastErrorMessage(fallback: "`createToAddress` failed with unknown error"))
         }
 
-        return true
-    }
-    
-    static func initAccountsTable(dbData: URL, seed: [UInt8], accounts: Int32, networkType: NetworkType) -> [String]? {
-        let dbData = dbData.osStr()
-        var capacity = UInt(0)
-        let extsksCStr = piratelc_init_accounts_table(dbData.0, dbData.1, seed, UInt(seed.count), accounts, &capacity, networkType.networkId)
-        if extsksCStr == nil {
-            return nil
-        }
-        
-        let extsks = UnsafeBufferPointer(start: extsksCStr, count: Int(accounts)).compactMap({ cStr -> String? in
-            guard let str = cStr else { return nil }
-            return String(cString: str)
-        })
-        piratelc_vec_string_free(extsksCStr, UInt(accounts), capacity)
-
-        return extsks
-    }
-    
-    static func initAccountsTable(dbData: URL, uvks: [UnifiedViewingKey], networkType: NetworkType) throws -> Bool {
-        let dbData = dbData.osStr()
-        
-        var ffiUvks: [FFIUnifiedViewingKey] = []
-        for uvk in uvks {
-            guard !uvk.extfvk.containsCStringNullBytesBeforeStringEnding() else {
-                throw RustWeldingError.malformedStringInput
-            }
-            guard !uvk.extpub.containsCStringNullBytesBeforeStringEnding() else {
-                throw RustWeldingError.malformedStringInput
-            }
-            
-            guard try self.isValidExtendedFullViewingKey(uvk.extfvk, networkType: networkType) else {
-                throw RustWeldingError.malformedStringInput
-            }
-
-            let extfvkCStr = [CChar](String(uvk.extfvk).utf8CString)
-            
-            let extfvkPtr = UnsafeMutablePointer<CChar>.allocate(capacity: extfvkCStr.count)
-            extfvkPtr.initialize(from: extfvkCStr, count: extfvkCStr.count)
-            
-            let extpubCStr = [CChar](String(uvk.extpub).utf8CString)
-            let extpubPtr = UnsafeMutablePointer<CChar>.allocate(capacity: extpubCStr.count)
-            extpubPtr.initialize(from: extpubCStr, count: extpubCStr.count)
-            
-            ffiUvks.append(FFIUnifiedViewingKey(extfvk: extfvkPtr, extpub: extpubPtr))
-        }
-        
-        var result = false
-
-        ffiUvks.withContiguousMutableStorageIfAvailable { pointer in
-            let slice = UnsafeMutablePointer<FFIUVKBoxedSlice>.allocate(capacity: 1)
-            slice.initialize(to: FFIUVKBoxedSlice(ptr: pointer.baseAddress, len: UInt(pointer.count)))
-            
-            result = piratelc_init_accounts_table_with_keys(dbData.0, dbData.1, slice, networkType.networkId)
-            slice.deinitialize(count: 1)
-        }
-        
-        defer {
-            for uvk in ffiUvks {
-                uvk.extfvk.deallocate()
-                uvk.extpub.deallocate()
-            }
-        }
-        
         return result
     }
-    // swiftlint:disable function_parameter_count
-    static func initBlocksTable(
-        dbData: URL,
+
+    func decryptAndStoreTransaction(txBytes: [UInt8], minedHeight: Int32) async throws {
+        let result = piratelc_decrypt_and_store_transaction(
+            dbData.0,
+            dbData.1,
+            txBytes,
+            UInt(txBytes.count),
+            UInt32(minedHeight),
+            networkType.networkId
+        )
+
+        guard result != 0 else {
+            throw ZcashError.rustDecryptAndStoreTransaction(lastErrorMessage(fallback: "`decryptAndStoreTransaction` failed with unknown error"))
+        }
+    }
+
+    func getBalance(account: Int32) async throws -> Int64 {
+        let balance = piratelc_get_balance(dbData.0, dbData.1, account, networkType.networkId)
+
+        guard balance >= 0 else {
+            throw ZcashError.rustGetBalance(Int(account), lastErrorMessage(fallback: "Error getting total balance from account \(account)"))
+        }
+
+        return balance
+    }
+
+    func getCurrentAddress(account: Int32) async throws -> UnifiedAddress {
+        let addressCStr = piratelc_get_current_address(
+            dbData.0,
+            dbData.1,
+            account,
+            networkType.networkId
+        )
+
+        guard let addressCStr else {
+            throw ZcashError.rustGetCurrentAddress(lastErrorMessage(fallback: "`getCurrentAddress` failed with unknown error"))
+        }
+
+        defer { piratelc_string_free(addressCStr) }
+
+        guard let address = String(validatingUTF8: addressCStr) else {
+            throw ZcashError.rustGetCurrentAddressInvalidAddress
+        }
+
+        return UnifiedAddress(validatedEncoding: address, networkType: networkType)
+    }
+
+    func getNearestRewindHeight(height: Int32) async throws -> Int32 {
+        let result = piratelc_get_nearest_rewind_height(
+            dbData.0,
+            dbData.1,
+            height,
+            networkType.networkId
+        )
+
+        guard result > 0 else {
+            throw ZcashError.rustGetNearestRewindHeight(lastErrorMessage(fallback: "`getNearestRewindHeight` failed with unknown error"))
+        }
+
+        return result
+    }
+
+    func getNextAvailableAddress(account: Int32) async throws -> UnifiedAddress {
+        let addressCStr = piratelc_get_next_available_address(
+            dbData.0,
+            dbData.1,
+            account,
+            networkType.networkId
+        )
+
+        guard let addressCStr else {
+            throw ZcashError.rustGetNextAvailableAddress(lastErrorMessage(fallback: "`getNextAvailableAddress` failed with unknown error"))
+        }
+
+        defer { piratelc_string_free(addressCStr) }
+
+        guard let address = String(validatingUTF8: addressCStr) else {
+            throw ZcashError.rustGetNextAvailableAddressInvalidAddress
+        }
+
+        return UnifiedAddress(validatedEncoding: address, networkType: networkType)
+    }
+
+    func getReceivedMemo(idNote: Int64) async -> Memo? {
+        var contiguousMemoBytes = ContiguousArray<UInt8>(MemoBytes.empty().bytes)
+        var success = false
+
+        contiguousMemoBytes.withUnsafeMutableBufferPointer { memoBytePtr in
+            success = piratelc_get_received_memo(dbData.0, dbData.1, idNote, memoBytePtr.baseAddress, networkType.networkId)
+        }
+
+        guard success else { return nil }
+
+        return (try? MemoBytes(contiguousBytes: contiguousMemoBytes)).flatMap { try? $0.intoMemo() }
+    }
+
+    func getSentMemo(idNote: Int64) async -> Memo? {
+        var contiguousMemoBytes = ContiguousArray<UInt8>(MemoBytes.empty().bytes)
+        var success = false
+
+        contiguousMemoBytes.withUnsafeMutableBytes { memoBytePtr in
+            success = piratelc_get_sent_memo(dbData.0, dbData.1, idNote, memoBytePtr.baseAddress, networkType.networkId)
+        }
+
+        guard success else { return nil }
+
+        return (try? MemoBytes(contiguousBytes: contiguousMemoBytes)).flatMap { try? $0.intoMemo() }
+    }
+
+    func getTransparentBalance(account: Int32) async throws -> Int64 {
+        guard account >= 0 else {
+            throw ZcashError.rustGetTransparentBalanceNegativeAccount(Int(account))
+        }
+
+        let balance = piratelc_get_total_transparent_balance_for_account(
+            dbData.0,
+            dbData.1,
+            networkType.networkId,
+            account
+        )
+
+        guard balance >= 0 else {
+            throw ZcashError.rustGetTransparentBalance(
+                Int(account),
+                lastErrorMessage(fallback: "Error getting Total Transparent balance from account \(account)")
+            )
+        }
+
+        return balance
+    }
+
+    func getVerifiedBalance(account: Int32) async throws -> Int64 {
+        let balance = piratelc_get_verified_balance(
+            dbData.0,
+            dbData.1,
+            account,
+            networkType.networkId,
+            minimumConfirmations
+        )
+
+        guard balance >= 0 else {
+            throw ZcashError.rustGetVerifiedBalance(
+                Int(account),
+                lastErrorMessage(fallback: "Error getting verified balance from account \(account)")
+            )
+        }
+
+        return balance
+    }
+
+    func getVerifiedTransparentBalance(account: Int32) async throws -> Int64 {
+        guard account >= 0 else {
+            throw ZcashError.rustGetVerifiedTransparentBalanceNegativeAccount(Int(account))
+        }
+
+        let balance = piratelc_get_verified_transparent_balance_for_account(
+            dbData.0,
+            dbData.1,
+            networkType.networkId,
+            account,
+            minimumConfirmations
+        )
+
+        guard balance >= 0 else {
+            throw ZcashError.rustGetVerifiedTransparentBalance(
+                Int(account),
+                lastErrorMessage(fallback: "Error getting verified transparent balance from account \(account)")
+            )
+        }
+
+        return balance
+    }
+
+    func initDataDb(seed: [UInt8]?) async throws -> DbInitResult {
+        switch piratelc_init_data_database(dbData.0, dbData.1, seed, UInt(seed?.count ?? 0), networkType.networkId) {
+        case 0: // ok
+            return DbInitResult.success
+        case 1:
+            return DbInitResult.seedRequired
+        default:
+            throw ZcashError.rustInitDataDb(lastErrorMessage(fallback: "`initDataDb` failed with unknown error"))
+        }
+    }
+
+    func initAccountsTable(ufvks: [UnifiedFullViewingKey]) async throws {
+        var ffiUfvks: [FFIEncodedKey] = []
+        for ufvk in ufvks {
+            guard !ufvk.encoding.containsCStringNullBytesBeforeStringEnding() else {
+                throw ZcashError.rustInitAccountsTableViewingKeyCotainsNullBytes
+            }
+
+            guard self.keyDeriving.isValidUnifiedFullViewingKey(ufvk.encoding) else {
+                throw ZcashError.rustInitAccountsTableViewingKeyIsInvalid
+            }
+
+            let ufvkCStr = [CChar](String(ufvk.encoding).utf8CString)
+
+            let ufvkPtr = UnsafeMutablePointer<CChar>.allocate(capacity: ufvkCStr.count)
+            ufvkPtr.initialize(from: ufvkCStr, count: ufvkCStr.count)
+
+            ffiUfvks.append(
+                FFIEncodedKey(account_id: ufvk.account, encoding: ufvkPtr)
+            )
+        }
+
+        var contiguousUVKs = ContiguousArray(ffiUfvks)
+
+        var result = false
+
+        contiguousUVKs.withContiguousMutableStorageIfAvailable { ufvksPtr in
+            result = piratelc_init_accounts_table_with_keys(
+                dbData.0,
+                dbData.1,
+                ufvksPtr.baseAddress,
+                UInt(ufvks.count),
+                networkType.networkId
+            )
+        }
+
+        defer {
+            for ufvk in ffiUfvks {
+                ufvk.encoding.deallocate()
+            }
+        }
+
+        guard result else {
+            let message = lastErrorMessage(fallback: "`initAccountsTable` failed with unknown error")
+            if message.isDbNotEmptyErrorMessage() {
+                throw ZcashError.rustInitAccountsTableDataDbNotEmpty
+            } else {
+                throw ZcashError.rustInitAccountsTable(message)
+            }
+        }
+    }
+
+    func initBlockMetadataDb() async throws {
+        let result = piratelc_init_block_metadata_db(fsBlockDbRoot.0, fsBlockDbRoot.1)
+
+        guard result else {
+            throw ZcashError.rustInitBlockMetadataDb(lastErrorMessage(fallback: "`initBlockMetadataDb` failed with unknown error"))
+        }
+    }
+
+    func writeBlocksMetadata(blocks: [ZcashCompactBlock]) async throws {
+        var ffiBlockMetaVec: [FFIBlockMeta] = []
+
+        for block in blocks {
+            let meta = block.meta
+            let hashPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: meta.hash.count)
+
+            let contiguousHashBytes = ContiguousArray(meta.hash.bytes)
+
+            let result: Void? = contiguousHashBytes.withContiguousStorageIfAvailable { hashBytesPtr in
+                // swiftlint:disable:next force_unwrapping
+                hashPtr.initialize(from: hashBytesPtr.baseAddress!, count: hashBytesPtr.count)
+            }
+
+            guard result != nil else {
+                defer {
+                    hashPtr.deallocate()
+                    ffiBlockMetaVec.deallocateElements()
+                }
+                throw ZcashError.rustWriteBlocksMetadataAllocationProblem
+            }
+
+            ffiBlockMetaVec.append(
+                FFIBlockMeta(
+                    height: UInt32(block.height),
+                    block_hash_ptr: hashPtr,
+                    block_hash_ptr_len: UInt(contiguousHashBytes.count),
+                    block_time: meta.time,
+                    sapling_outputs_count: meta.saplingOutputs,
+                    orchard_actions_count: meta.orchardOutputs
+                )
+            )
+        }
+
+        var contiguousFFIBlocks = ContiguousArray(ffiBlockMetaVec)
+
+        let len = UInt(contiguousFFIBlocks.count)
+
+        let fsBlocks = UnsafeMutablePointer<FFIBlocksMeta>.allocate(capacity: 1)
+
+        defer { ffiBlockMetaVec.deallocateElements() }
+
+        try contiguousFFIBlocks.withContiguousMutableStorageIfAvailable { ptr in
+            var meta = FFIBlocksMeta()
+            meta.ptr = ptr.baseAddress
+            meta.len = len
+
+            fsBlocks.initialize(to: meta)
+
+            let res = piratelc_write_block_metadata(fsBlockDbRoot.0, fsBlockDbRoot.1, fsBlocks)
+
+            guard res else {
+                throw ZcashError.rustWriteBlocksMetadata(lastErrorMessage(fallback: "`writeBlocksMetadata` failed with unknown error"))
+            }
+        }
+    }
+
+    func initBlocksTable(
         height: Int32,
         hash: String,
         time: UInt32,
-        saplingTree: String,
-        networkType: NetworkType
-    ) throws {
-        let dbData = dbData.osStr()
-        
+        saplingTree: String
+    ) async throws {
         guard !hash.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
+            throw ZcashError.rustInitBlocksTableHashContainsNullBytes
         }
-        
+
         guard !saplingTree.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
+            throw ZcashError.rustInitBlocksTableSaplingTreeContainsNullBytes
         }
-        
-        guard piratelc_init_blocks_table(
+
+        let result = piratelc_init_blocks_table(
             dbData.0,
             dbData.1,
             height,
@@ -185,94 +410,63 @@ class ZcashRustBackend: ZcashRustBackendWelding {
             time,
             [CChar](saplingTree.utf8CString),
             networkType.networkId
-        ) != 0 else {
-            if let error = lastError() {
-                throw error
+        )
+
+        guard result != 0 else {
+            let message = lastErrorMessage(fallback: "`initBlocksTable` failed with unknown error")
+            if message.isDbNotEmptyErrorMessage() {
+                throw ZcashError.rustInitBlocksTableDataDbNotEmpty
+            } else {
+                throw ZcashError.rustInitBlocksTable(message)
             }
-            throw RustWeldingError.dataDbInitFailed(message: "Unknown Error")
         }
     }
-    
-    static func getAddress(dbData: URL, account: Int32, networkType: NetworkType) -> String? {
-        let dbData = dbData.osStr()
-        
-        guard let addressCStr = piratelc_get_address(dbData.0, dbData.1, account, networkType.networkId) else { return nil }
-        
-        let address = String(validatingUTF8: addressCStr)
-        piratelc_string_free(addressCStr)
-        return address
+
+    func latestCachedBlockHeight() async -> BlockHeight {
+        return BlockHeight(piratelc_latest_cached_block_height(fsBlockDbRoot.0, fsBlockDbRoot.1))
     }
-    
-    static func getBalance(dbData: URL, account: Int32, networkType: NetworkType) -> Int64 {
-        let dbData = dbData.osStr()
-        return piratelc_get_balance(dbData.0, dbData.1, account, networkType.networkId)
-    }
-    
-    static func getVerifiedBalance(dbData: URL, account: Int32, networkType: NetworkType) -> Int64 {
-        let dbData = dbData.osStr()
-        return piratelc_get_verified_balance(dbData.0, dbData.1, account, networkType.networkId)
-    }
-    
-    static func getVerifiedTransparentBalance(dbData: URL, address: String, networkType: NetworkType) throws -> Int64 {
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard try isValidTransparentAddress(address, networkType: networkType) else {
-            throw RustWeldingError.unableToDeriveKeys
-        }
-        
-        let dbData = dbData.osStr()
-        
-        return piratelc_get_verified_transparent_balance(dbData.0, dbData.1, [CChar](address.utf8CString), networkType.networkId)
-    }
-    
-    static func getTransparentBalance(dbData: URL, address: String, networkType: NetworkType) throws -> Int64 {
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard try self.isValidTransparentAddress(address, networkType: networkType) else {
-            throw RustWeldingError.unableToDeriveKeys
-        }
-        
-        let dbData = dbData.osStr()
-        return piratelc_get_total_transparent_balance(dbData.0, dbData.1, [CChar](address.utf8CString), networkType.networkId)
-    }
-    
-    static func clearUtxos(dbData: URL, address: String, sinceHeight: BlockHeight, networkType: NetworkType) throws -> Int32 {
-        let dbData = dbData.osStr()
-        
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard try isValidTransparentAddress(address, networkType: networkType) else {
-            throw RustWeldingError.unableToDeriveKeys
-        }
-        
-        let result = piratelc_clear_utxos(dbData.0, dbData.1, [CChar](address.utf8CString), Int32(sinceHeight), networkType.networkId)
-        
-        guard result > 0 else {
-            if let error = lastError() {
-                throw error
-            }
-            return result
-        }
-        return result
-    }
-    
-    static func putUnspentTransparentOutput(dbData: URL, address: String, txid: [UInt8], index: Int, script: [UInt8], value: Int64, height: BlockHeight, networkType: NetworkType) throws -> Bool {
-        let dbData = dbData.osStr()
-        
-        guard !address.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard piratelc_put_utxo(
+
+    func listTransparentReceivers(account: Int32) async throws -> [TransparentAddress] {
+        let encodedKeysPtr = piratelc_list_transparent_receivers(
             dbData.0,
             dbData.1,
-            [CChar](address.utf8CString),
+            account,
+            networkType.networkId
+        )
+
+        guard let encodedKeysPtr else {
+            throw ZcashError.rustListTransparentReceivers(lastErrorMessage(fallback: "`listTransparentReceivers` failed with unknown error"))
+        }
+
+        defer { piratelc_free_keys(encodedKeysPtr) }
+
+        var addresses: [TransparentAddress] = []
+
+        for i in (0 ..< Int(encodedKeysPtr.pointee.len)) {
+            let key = encodedKeysPtr.pointee.ptr.advanced(by: i).pointee
+
+            guard let taddrStr = String(validatingUTF8: key.encoding) else {
+                throw ZcashError.rustListTransparentReceiversInvalidAddress
+            }
+
+            addresses.append(
+                TransparentAddress(validatedEncoding: taddrStr)
+            )
+        }
+
+        return addresses
+    }
+
+    func putUnspentTransparentOutput(
+        txid: [UInt8],
+        index: Int,
+        script: [UInt8],
+        value: Int64,
+        height: BlockHeight
+    ) async throws {
+        let result = piratelc_put_utxo(
+            dbData.0,
+            dbData.1,
             txid,
             UInt(txid.count),
             Int32(index),
@@ -281,429 +475,123 @@ class ZcashRustBackend: ZcashRustBackendWelding {
             value,
             Int32(height),
             networkType.networkId
-        ) else {
-            if let error = lastError() {
-                throw error
-            }
-            return false
-        }
-
-        return true
-    }
-    
-    static func downloadedUtxoBalance(dbData: URL, address: String, networkType: NetworkType) throws -> WalletBalance {
-        let verified = try getVerifiedTransparentBalance(dbData: dbData, address: address, networkType: networkType)
-        let total = try getTransparentBalance(dbData: dbData, address: address, networkType: networkType)
-        return TransparentBalance(verified: verified, total: total, address: address)
-    }
-    
-    static func getReceivedMemoAsUTF8(dbData: URL, idNote: Int64, networkType: NetworkType) -> String? {
-        let dbData = dbData.osStr()
-        
-        guard let memoCStr = piratelc_get_received_memo_as_utf8(dbData.0, dbData.1, idNote, networkType.networkId) else { return  nil }
-        
-        let memo = String(validatingUTF8: memoCStr)
-        piratelc_string_free(memoCStr)
-        return memo
-    }
-    
-    static func getSentMemoAsUTF8(dbData: URL, idNote: Int64, networkType: NetworkType) -> String? {
-        let dbData = dbData.osStr()
-        
-        guard let memoCStr = piratelc_get_sent_memo_as_utf8(dbData.0, dbData.1, idNote, networkType.networkId) else { return nil }
-        
-        let memo = String(validatingUTF8: memoCStr)
-        piratelc_string_free(memoCStr)
-        return memo
-    }
-    
-    static func validateCombinedChain(dbCache: URL, dbData: URL, networkType: NetworkType) -> Int32 {
-        let dbCache = dbCache.osStr()
-        let dbData = dbData.osStr()
-        return piratelc_validate_combined_chain(dbCache.0, dbCache.1, dbData.0, dbData.1, networkType.networkId)
-    }
-    
-    static func getNearestRewindHeight(dbData: URL, height: Int32, networkType: NetworkType) -> Int32 {
-        let dbData = dbData.osStr()
-        return piratelc_get_nearest_rewind_height(dbData.0, dbData.1, height, networkType.networkId)
-    }
-    
-    static func rewindToHeight(dbData: URL, height: Int32, networkType: NetworkType) -> Bool {
-        let dbData = dbData.osStr()
-        return piratelc_rewind_to_height(dbData.0, dbData.1, height, networkType.networkId)
-    }
-    
-    static func scanBlocks(dbCache: URL, dbData: URL, limit: UInt32 = 0, networkType: NetworkType) -> Bool {
-        let dbCache = dbCache.osStr()
-        let dbData = dbData.osStr()
-        return piratelc_scan_blocks(dbCache.0, dbCache.1, dbData.0, dbData.1, limit, networkType.networkId) != 0
-    }
-
-    static func decryptAndStoreTransaction(dbData: URL, txBytes: [UInt8], minedHeight: Int32, networkType: NetworkType) -> Bool {
-        let dbData = dbData.osStr()
-        return piratelc_decrypt_and_store_transaction(
-            dbData.0,
-            dbData.1,
-            txBytes,
-            UInt(txBytes.count),
-            UInt32(minedHeight),
-            networkType.networkId
-        ) != 0
-    }
-
-    // swiftlint:disable function_parameter_count
-    static func createToAddress(
-        dbData: URL,
-        account: Int32,
-        extsk: String,
-        to address: String,
-        value: Int64,
-        memo: String?,
-        spendParamsPath: String,
-        outputParamsPath: String,
-        networkType: NetworkType
-    ) -> Int64 {
-        let dbData = dbData.osStr()
-        let memoBytes = memo ?? ""
-        
-        return piratelc_create_to_address(
-            dbData.0,
-            dbData.1,
-            account,
-            [CChar](extsk.utf8CString),
-            [CChar](address.utf8CString),
-            value,
-            [CChar](memoBytes.utf8CString),
-            spendParamsPath,
-            UInt(spendParamsPath.lengthOfBytes(using: .utf8)),
-            outputParamsPath,
-            UInt(outputParamsPath.lengthOfBytes(using: .utf8)),
-            networkType.networkId
         )
-    }
-    
-    static func shieldFunds(
-        dbCache: URL,
-        dbData: URL,
-        account: Int32,
-        tsk: String,
-        extsk: String,
-        memo: String?,
-        spendParamsPath: String,
-        outputParamsPath: String,
-        networkType: NetworkType
-    ) -> Int64 {
-        let dbData = dbData.osStr()
-        let memoBytes = memo ?? ""
-        
-        return piratelc_shield_funds(
-            dbData.0,
-            dbData.1,
-            account,
-            [CChar](tsk.utf8CString),
-            [CChar](extsk.utf8CString),
-            [CChar](memoBytes.utf8CString),
-            spendParamsPath,
-            UInt(spendParamsPath.lengthOfBytes(using: .utf8)),
-            outputParamsPath,
-            UInt(outputParamsPath.lengthOfBytes(using: .utf8)),
-            networkType.networkId
-        )
-    }
-    
-    static func deriveExtendedFullViewingKey(_ spendingKey: String, networkType: NetworkType) throws -> String? {
-        guard !spendingKey.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard
-            let extsk = piratelc_derive_extended_full_viewing_key(
-                [CChar](spendingKey.utf8CString),
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        
-        let derived = String(validatingUTF8: extsk)
-        
-        piratelc_string_free(extsk)
-        return derived
-    }
-    
-    static func deriveExtendedFullViewingKeys(seed: [UInt8], accounts: Int32, networkType: NetworkType) throws -> [String]? {
-        var capacity = UInt(0)
-        guard
-            let extsksCStr = piratelc_derive_extended_full_viewing_keys(
-                seed,
-                UInt(seed.count),
-                accounts,
-                &capacity,
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        
-        let extsks = UnsafeBufferPointer(start: extsksCStr, count: Int(accounts)).compactMap { cStr -> String? in
-            guard let str = cStr else { return nil }
-            return String(cString: str)
-        }
 
-        piratelc_vec_string_free(extsksCStr, UInt(accounts), capacity)
-        return extsks
-    }
-    
-    static func deriveExtendedSpendingKeys(seed: [UInt8], accounts: Int32, networkType: NetworkType) throws -> [String]? {
-        var capacity = UInt(0)
-        guard
-            let extsksCStr = piratelc_derive_extended_spending_keys(
-                seed,
-                UInt(seed.count),
-                accounts,
-                &capacity,
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
+        guard result else {
+            throw ZcashError.rustPutUnspentTransparentOutput(lastErrorMessage(fallback: "`putUnspentTransparentOutput` failed with unknown error"))
         }
-        
-        let extsks = UnsafeBufferPointer(start: extsksCStr, count: Int(accounts)).compactMap { cStr -> String? in
-            guard let str = cStr else { return nil }
-            return String(cString: str)
-        }
-
-        piratelc_vec_string_free(extsksCStr, UInt(accounts), capacity)
-
-        return extsks
     }
 
-    static func deriveUnifiedViewingKeyFromSeed(
-        _ seed: [UInt8],
-        numberOfAccounts: Int,
-        networkType: NetworkType
-    ) throws -> [UnifiedViewingKey] {
-        guard
-            let uvksStruct = piratelc_derive_unified_viewing_keys_from_seed(
-                seed,
-                UInt(seed.count),
-                Int32(numberOfAccounts),
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            throw RustWeldingError.unableToDeriveKeys
-        }
-        
-        let uvksSize = uvksStruct.pointee.len
+    func validateCombinedChain(limit: UInt32 = 0) async throws {
+        let result = piratelc_validate_combined_chain(fsBlockDbRoot.0, fsBlockDbRoot.1, dbData.0, dbData.1, limit, networkType.networkId)
 
-        guard let uvksArrayPointer = uvksStruct.pointee.ptr, uvksSize > 0 else {
-            throw RustWeldingError.unableToDeriveKeys
+        switch result {
+        case -1:
+            return
+        case 0:
+            throw ZcashError.rustValidateCombinedChainValidationFailed(
+                lastErrorMessage(fallback: "`validateCombinedChain` failed with unknown error")
+            )
+        default:
+            throw ZcashError.rustValidateCombinedChainInvalidChain(result)
         }
+    }
 
-        var uvks: [UnifiedViewingKey] = []
-        
-        for item in 0 ..< Int(uvksSize) {
-            let itemPointer = uvksArrayPointer.advanced(by: item)
-            
-            guard let extfvk = String(validatingUTF8: itemPointer.pointee.extfvk) else {
-                throw RustWeldingError.unableToDeriveKeys
-            }
-            
-            guard let extpub = String(validatingUTF8: itemPointer.pointee.extpub) else {
-                throw RustWeldingError.unableToDeriveKeys
-            }
-            
-            uvks.append(UVK(extfvk: extfvk, extpub: extpub))
+    func rewindToHeight(height: Int32) async throws {
+        let result = piratelc_rewind_to_height(dbData.0, dbData.1, height, networkType.networkId)
+
+        guard result else {
+            throw ZcashError.rustRewindToHeight(height, lastErrorMessage(fallback: "`rewindToHeight` failed with unknown error"))
         }
-        
-        piratelc_free_uvk_array(uvksStruct)
-        
-        return uvks
     }
-    
-    static func deriveShieldedAddressFromSeed(
-        seed: [UInt8],
-        accountIndex: Int32,
-        networkType: NetworkType
-    ) throws -> String? {
-        guard
-            let zaddrCStr = piratelc_derive_shielded_address_from_seed(
-                seed,
-                UInt(seed.count),
-                accountIndex,
-                networkType.networkId
+
+    func rewindCacheToHeight(height: Int32) async throws {
+        let result = piratelc_rewind_fs_block_cache_to_height(fsBlockDbRoot.0, fsBlockDbRoot.1, height)
+
+        guard result else {
+            throw ZcashError.rustRewindCacheToHeight(lastErrorMessage(fallback: "`rewindCacheToHeight` failed with unknown error"))
+        }
+    }
+
+    func scanBlocks(limit: UInt32 = 0) async throws {
+        let result = piratelc_scan_blocks(fsBlockDbRoot.0, fsBlockDbRoot.1, dbData.0, dbData.1, limit, networkType.networkId)
+
+        guard result != 0 else {
+            throw ZcashError.rustScanBlocks(lastErrorMessage(fallback: "`scanBlocks` failed with unknown error"))
+        }
+    }
+
+    func shieldFunds(
+        usk: UnifiedSpendingKey,
+        memo: MemoBytes?,
+        shieldingThreshold: Zatoshi
+    ) async throws -> Int64 {
+        let result = usk.bytes.withUnsafeBufferPointer { uskBuffer in
+            piratelc_shield_funds(
+                dbData.0,
+                dbData.1,
+                uskBuffer.baseAddress,
+                UInt(usk.bytes.count),
+                memo?.bytes,
+                UInt64(shieldingThreshold.amount),
+                spendParamsPath.0,
+                spendParamsPath.1,
+                outputParamsPath.0,
+                outputParamsPath.1,
+                networkType.networkId,
+                minimumConfirmations,
+                useZIP317Fees
             )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        let zAddr = String(validatingUTF8: zaddrCStr)
-        
-        piratelc_string_free(zaddrCStr)
-        
-        return zAddr
-    }
-    
-    static func deriveShieldedAddressFromViewingKey(
-        _ extfvk: String,
-        networkType: NetworkType
-    ) throws -> String? {
-        guard !extfvk.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        guard
-            let zaddrCStr = piratelc_derive_shielded_address_from_viewing_key(
-                [CChar](extfvk.utf8CString),
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        let zAddr = String(validatingUTF8: zaddrCStr)
-        
-        piratelc_string_free(zaddrCStr)
-        
-        return zAddr
-    }
-    
-    static func deriveTransparentAddressFromSeed(
-        seed: [UInt8],
-        account: Int,
-        index: Int,
-        networkType: NetworkType
-    ) throws -> String? {
-        guard
-            let tAddrCStr = piratelc_derive_transparent_address_from_seed(
-                seed,
-                UInt(seed.count),
-                Int32(account),
-                Int32(index),
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        
-        let tAddr = String(validatingUTF8: tAddrCStr)
-        
-        return tAddr
-    }
-    
-    static func deriveTransparentPrivateKeyFromSeed(
-        seed: [UInt8],
-        account: Int,
-        index: Int,
-        networkType: NetworkType
-    ) throws -> String? {
-        guard
-            let skCStr = piratelc_derive_transparent_private_key_from_seed(
-                seed,
-                UInt(seed.count),
-                Int32(account),
-                Int32(index),
-                networkType.networkId
-            )
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
-        }
-        let secretKey = String(validatingUTF8: skCStr)
-        
-        return secretKey
-    }
-    
-    static func derivedTransparentAddressFromPublicKey(
-        _ pubkey: String,
-        networkType: NetworkType
-    ) throws -> String {
-        guard !pubkey.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard
-            let tAddrCStr = piratelc_derive_transparent_address_from_public_key(
-                [CChar](pubkey.utf8CString),
-                networkType.networkId
-            ),
-            let tAddr = String(validatingUTF8: tAddrCStr)
-        else {
-            if let error = lastError() {
-                throw error
-            }
-            throw RustWeldingError.unableToDeriveKeys
         }
 
-        return tAddr
-    }
-    
-    static func deriveTransparentAddressFromSecretKey(_ tsk: String, networkType: NetworkType) throws -> String? {
-        guard !tsk.containsCStringNullBytesBeforeStringEnding() else {
-            throw RustWeldingError.malformedStringInput
-        }
-        
-        guard let tAddrCStr = piratelc_derive_transparent_address_from_secret_key([CChar](tsk.utf8CString), networkType.networkId) else {
-            if let error = lastError() {
-                throw error
-            }
-            return nil
+        guard result > 0 else {
+            throw ZcashError.rustShieldFunds(lastErrorMessage(fallback: "`shieldFunds` failed with unknown error"))
         }
 
-        let tAddr = String(validatingUTF8: tAddrCStr)
-        
-        return tAddr
+        return result
     }
-    
-    static func consensusBranchIdFor(height: Int32, networkType: NetworkType) throws -> Int32 {
+
+    nonisolated func consensusBranchIdFor(height: Int32) throws -> Int32 {
         let branchId = piratelc_branch_id_for_height(height, networkType.networkId)
-        
+
         guard branchId != -1 else {
-            throw RustWeldingError.noConsensusBranchId(height: height)
+            throw ZcashError.rustNoConsensusBranchId(height)
         }
-        
+
         return branchId
     }
 }
 
-private struct UVK: UnifiedViewingKey {
-    var extfvk: ExtendedFullViewingKey
-    var extpub: ExtendedPublicKey
-}
-
 private extension ZcashRustBackend {
-    static func throwDataDbError(_ error: RustWeldingError) -> Error {
-        if case RustWeldingError.genericError(let message) = error, message.contains("is not empty") {
-            return RustWeldingError.dataDbNotEmpty
-        }
+    nonisolated func lastErrorMessage(fallback: String) -> String {
+        let errorLen = piratelc_last_error_length()
+        defer { piratelc_clear_last_error() }
 
-        return RustWeldingError.dataDbInitFailed(message: error.localizedDescription)
+        if errorLen > 0 {
+            let error = UnsafeMutablePointer<Int8>.allocate(capacity: Int(errorLen))
+            defer { error.deallocate() }
+
+            piratelc_error_message_utf8(error, errorLen)
+            if let errorMessage = String(validatingUTF8: error) {
+                return errorMessage
+            } else {
+                return fallback
+            }
+        } else {
+            return fallback
+        }
     }
 }
 
 private extension URL {
     func osStr() -> (String, UInt) {
         let path = self.absoluteString
+        return (path, UInt(path.lengthOfBytes(using: .utf8)))
+    }
+
+    /// use when the rust ffi needs to make filesystem operations
+    func osPathStr() -> (String, UInt) {
+        let path = self.path
         return (path, UInt(path.lengthOfBytes(using: .utf8)))
     }
 }
@@ -714,5 +602,44 @@ extension String {
     */
     func containsCStringNullBytesBeforeStringEnding() -> Bool {
         self.utf8CString.firstIndex(of: 0) != (self.utf8CString.count - 1)
+    }
+
+    func isDbNotEmptyErrorMessage() -> Bool {
+        return contains("is not empty")
+    }
+}
+
+extension FFIBinaryKey {
+    /// converts an [`FFIBinaryKey`] into a [`UnifiedSpendingKey`]
+    /// - Note: This does not check that the converted value actually holds a valid USK
+    func unsafeToUnifiedSpendingKey(network: NetworkType) -> UnifiedSpendingKey {
+        .init(
+            network: network,
+            bytes: self.encoding.toByteArray(
+                length: Int(self.encoding_len)
+            ),
+            account: self.account_id
+        )
+    }
+}
+
+extension UnsafeMutablePointer where Pointee == UInt8 {
+    /// copies the bytes pointed on
+    func toByteArray(length: Int) -> [UInt8] {
+        var bytes: [UInt8] = []
+
+        for index in 0 ..< length {
+            bytes.append(self.advanced(by: index).pointee)
+        }
+
+        return bytes
+    }
+}
+
+extension Array where Element == FFIBlockMeta {
+    func deallocateElements() {
+        self.forEach { element in
+            element.block_hash_ptr.deallocate()
+        }
     }
 }

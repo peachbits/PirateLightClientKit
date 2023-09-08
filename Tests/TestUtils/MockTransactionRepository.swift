@@ -8,6 +8,10 @@
 import Foundation
 @testable import PirateLightClientKit
 
+enum MockTransactionRepositoryError: Error {
+    case notImplemented
+}
+
 class MockTransactionRepository {
     enum Kind {
         case sent
@@ -17,11 +21,13 @@ class MockTransactionRepository {
     var unminedCount: Int
     var receivedCount: Int
     var sentCount: Int
-    var transactions: [ConfirmedTransactionEntity] = []
+    var scannedHeight: BlockHeight
     var reference: [Kind] = []
-    var sentTransactions: [ConfirmedTransaction] = []
-    var receivedTransactions: [ConfirmedTransaction] = []
     var network: PirateNetwork
+
+    var transactions: [ZcashTransaction.Overview] = []
+    var receivedTransactions: [ZcashTransaction.Overview] = []
+    var sentTransactions: [ZcashTransaction.Overview] = []
 
     var allCount: Int {
         receivedCount + sentCount
@@ -31,26 +37,19 @@ class MockTransactionRepository {
         unminedCount: Int,
         receivedCount: Int,
         sentCount: Int,
+        scannedHeight: BlockHeight,
         network: PirateNetwork
     ) {
         self.unminedCount = unminedCount
         self.receivedCount = receivedCount
         self.sentCount = sentCount
+        self.scannedHeight = scannedHeight
         self.network = network
     }
 
-    func generate() {
-        var txArray: [ConfirmedTransactionEntity] = []
-        reference = referenceArray()
-        for index in 0 ..< reference.count {
-            txArray.append(mockTx(index: index, kind: reference[index]))
-        }
-        transactions = txArray
-    }
-    
     func referenceArray() -> [Kind] {
         var template: [Kind] = []
-        
+
         for _ in 0 ..< sentCount {
             template.append(.sent)
         }
@@ -60,48 +59,7 @@ class MockTransactionRepository {
 
         return template.shuffled()
     }
-    
-    func mockTx(index: Int, kind: Kind) -> ConfirmedTransactionEntity {
-        switch kind {
-        case .received:
-            return mockReceived(index)
-        case .sent:
-            return mockSent(index)
-        }
-    }
-    
-    func mockSent(_ index: Int) -> ConfirmedTransactionEntity {
-        ConfirmedTransaction(
-            toAddress: "some_address",
-            expiryHeight: BlockHeight.max,
-            minedHeight: randomBlockHeight(),
-            noteId: index,
-            blockTimeInSeconds: randomTimeInterval(),
-            transactionIndex: index,
-            raw: Data(),
-            id: index,
-            value: Int.random(in: 1 ... PirateSDK.zatoshiPerARRR),
-            memo: nil,
-            rawTransactionId: Data()
-        )
-    }
-    
-    func mockReceived(_ index: Int) -> ConfirmedTransactionEntity {
-        ConfirmedTransaction(
-            toAddress: nil,
-            expiryHeight: BlockHeight.max,
-            minedHeight: randomBlockHeight(),
-            noteId: index,
-            blockTimeInSeconds: randomTimeInterval(),
-            transactionIndex: index,
-            raw: Data(),
-            id: index,
-            value: Int.random(in: 1 ... PirateSDK.zatoshiPerARRR),
-            memo: nil,
-            rawTransactionId: Data()
-        )
-    }
-    
+
     func randomBlockHeight() -> BlockHeight {
         BlockHeight.random(in: network.constants.saplingActivationHeight ... 1_000_000)
     }
@@ -109,18 +67,26 @@ class MockTransactionRepository {
     func randomTimeInterval() -> TimeInterval {
         Double.random(in: Date().timeIntervalSince1970 - 1000000.0 ... Date().timeIntervalSince1970)
     }
-    
-    func slice(txs: [ConfirmedTransactionEntity], offset: Int, limit: Int) -> [ConfirmedTransactionEntity] {
-        guard offset < txs.count else { return [] }
-        
-        return Array(txs[offset ..< min(offset + limit, txs.count - offset)])
-    }
 }
 
 extension MockTransactionRepository.Kind: Equatable {}
 
 // MARK: - TransactionRepository
 extension MockTransactionRepository: TransactionRepository {
+    func getTransactionOutputs(for id: Int) async throws -> [PirateLightClientKit.ZcashTransaction.Output] {
+        []
+    }
+
+    func findPendingTransactions(latestHeight: PirateLightClientKit.BlockHeight, offset: Int, limit: Int) async throws -> [ZcashTransaction.Overview] {
+        []
+    }
+
+    func getRecipients(for id: Int) -> [TransactionRecipient] {
+        []
+    }
+
+    func closeDBConnection() { }
+
     func countAll() throws -> Int {
         allCount
     }
@@ -133,63 +99,128 @@ extension MockTransactionRepository: TransactionRepository {
         nil
     }
 
-    func findBy(id: Int) throws -> TransactionEntity? {
-        transactions.first(where: { $0.id == id })?.transactionEntity
+    func findBy(id: Int) throws -> ZcashTransaction.Overview? {
+        transactions.first(where: { $0.id == id })
     }
 
-    func findBy(rawId: Data) throws -> TransactionEntity? {
-        transactions.first(where: { $0.rawTransactionId == rawId })?.transactionEntity
-    }
-
-    func findAllSentTransactions(offset: Int, limit: Int) throws -> [ConfirmedTransactionEntity]? {
-        guard let indices = reference.indices(where: { $0 == .sent }) else { return nil }
-
-        let sentTxs = indices.map { idx -> ConfirmedTransactionEntity in
-            transactions[idx]
-        }
-        return slice(txs: sentTxs, offset: offset, limit: limit)
-    }
-
-    func findAllReceivedTransactions(offset: Int, limit: Int) throws -> [ConfirmedTransactionEntity]? {
-        guard let indices = reference.indices(where: { $0 == .received }) else { return nil }
-
-        let receivedTxs = indices.map { idx -> ConfirmedTransactionEntity in
-            transactions[idx]
-        }
-
-        return slice(txs: receivedTxs, offset: offset, limit: limit)
-    }
-
-    func findAll(offset: Int, limit: Int) throws -> [ConfirmedTransactionEntity]? {
-        transactions
-    }
-
-    func findAll(from: ConfirmedTransactionEntity?, limit: Int) throws -> [ConfirmedTransactionEntity]? {
-        nil
+    func findBy(rawId: Data) throws -> ZcashTransaction.Overview? {
+        transactions.first(where: { $0.rawID == rawId })
     }
 
     func lastScannedHeight() throws -> BlockHeight {
-        return 700000
+        scannedHeight
+    }
+
+    func lastScannedBlock() throws -> Block? {
+        nil
     }
 
     func isInitialized() throws -> Bool {
         true
     }
 
-    func findEncodedTransactionBy(txId: Int) -> EncodedTransaction? {
-        nil
+    func generate() {
+        var txArray: [ZcashTransaction.Overview] = []
+        reference = referenceArray()
+        for index in 0 ..< reference.count {
+            txArray.append(mockTx(index: index, kind: reference[index]))
+        }
+        transactions = txArray
     }
 
-    func findTransactions(in range: BlockRange, limit: Int) throws -> [TransactionEntity]? {
-        nil
+    func mockTx(index: Int, kind: Kind) -> ZcashTransaction.Overview {
+        switch kind {
+        case .received:
+            return mockReceived(index)
+        case .sent:
+            return mockSent(index)
+        }
     }
 
-    func findConfirmedTransactionBy(rawId: Data) throws -> ConfirmedTransactionEntity? {
-        nil
+    func mockSent(_ index: Int) -> ZcashTransaction.Overview {
+        return ZcashTransaction.Overview(
+            accountId: 0,
+            blockTime: randomTimeInterval(),
+            expiryHeight: BlockHeight.max,
+            fee: Zatoshi(2),
+            id: index,
+            index: index,
+            hasChange: true,
+            memoCount: 0,
+            minedHeight: randomBlockHeight(),
+            raw: Data(),
+            rawID: Data(),
+            receivedNoteCount: 0,
+            sentNoteCount: 1,
+            value: Zatoshi(-Int64.random(in: 1 ... Zatoshi.Constants.oneZecInZatoshi)),
+            isExpiredUmined: false
+        )
     }
 
-    func findConfirmedTransactions(in range: BlockRange, offset: Int, limit: Int) throws -> [ConfirmedTransactionEntity]? {
-        nil
+    func mockReceived(_ index: Int) -> ZcashTransaction.Overview {
+        return ZcashTransaction.Overview(
+            accountId: 0,
+            blockTime: randomTimeInterval(),
+            expiryHeight: BlockHeight.max,
+            fee: Zatoshi(2),
+            id: index,
+            index: index,
+            hasChange: true,
+            memoCount: 0,
+            minedHeight: randomBlockHeight(),
+            raw: Data(),
+            rawID: Data(),
+            receivedNoteCount: 1,
+            sentNoteCount: 0,
+            value: Zatoshi(Int64.random(in: 1 ... Zatoshi.Constants.oneZecInZatoshi)),
+            isExpiredUmined: false
+        )
+    }
+
+    func slice(txs: [ZcashTransaction.Overview], offset: Int, limit: Int) -> [ZcashTransaction.Overview] {
+        guard offset < txs.count else { return [] }
+
+        return Array(txs[offset ..< min(offset + limit, txs.count - offset)])
+    }
+
+    func find(id: Int) throws -> ZcashTransaction.Overview {
+        guard let transaction = transactions.first(where: { $0.id == id }) else {
+            throw ZcashError.transactionRepositoryEntityNotFound
+        }
+
+        return transaction
+    }
+
+    func find(rawID: Data) throws -> ZcashTransaction.Overview {
+        guard let transaction = transactions.first(where: { $0.rawID == rawID }) else {
+            throw ZcashError.transactionRepositoryEntityNotFound
+        }
+
+        return transaction
+    }
+
+    func find(offset: Int, limit: Int, kind: TransactionKind) throws -> [PirateLightClientKit.ZcashTransaction.Overview] {
+        throw MockTransactionRepositoryError.notImplemented
+    }
+
+    func find(in range: CompactBlockRange, limit: Int, kind: TransactionKind) throws -> [ZcashTransaction.Overview] {
+        throw MockTransactionRepositoryError.notImplemented
+    }
+
+    func find(from: ZcashTransaction.Overview, limit: Int, kind: TransactionKind) throws -> [ZcashTransaction.Overview] {
+        throw MockTransactionRepositoryError.notImplemented
+    }
+
+    func findReceived(offset: Int, limit: Int) throws -> [ZcashTransaction.Overview] {
+        throw MockTransactionRepositoryError.notImplemented
+    }
+
+    func findSent(offset: Int, limit: Int) throws -> [ZcashTransaction.Overview] {
+        throw MockTransactionRepositoryError.notImplemented
+    }
+
+    func findMemos(for transaction: PirateLightClientKit.ZcashTransaction.Overview) throws -> [PirateLightClientKit.Memo] {
+        throw MockTransactionRepositoryError.notImplemented
     }
 }
 
@@ -199,12 +230,10 @@ extension Array {
 
         var idx: [Int] = []
 
-        for index in 0 ..< self.count {
-            if function(self[index]) {
-                idx.append(index)
-            }
+        for index in 0 ..< self.count where function(self[index]) {
+            idx.append(index)
         }
-        
+
         guard !idx.isEmpty else { return nil }
         return idx
     }

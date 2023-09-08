@@ -10,92 +10,84 @@ import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional force_cast force_try
 class BlockDownloaderTests: XCTestCase {
     let branchID = "2bb40e60"
     let chainName = "main"
 
+    let testFileManager = FileManager()
     var darksideWalletService: DarksideWalletService!
-    var downloader: CompactBlockDownloading!
+    var downloader: BlockDownloaderService!
     var service: LightWalletService!
     var storage: CompactBlockRepository!
-    var cacheDB = try! __cacheDbURL()
     var network = DarksideWalletDNetwork()
+    var rustBackend: ZcashRustBackendWelding!
+    var testTempDirectory: URL!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        service = LightWalletGRPCService(endpoint: LightWalletEndpointBuilder.default)
-        storage = try! TestDbBuilder.diskCompactBlockStorage(at: cacheDB)
-        downloader = CompactBlockDownloader(service: service, storage: storage)
-        darksideWalletService = DarksideWalletService(service: service as! LightWalletGRPCService)
+    override func setUp() async throws {
+        try await super.setUp()
+        testTempDirectory = Environment.uniqueTestTempDirectory
+
+        service = LightWalletServiceFactory(endpoint: LightWalletEndpointBuilder.default).make()
+
+        rustBackend = ZcashRustBackend.makeForTests(
+            fsBlockDbRoot: testTempDirectory,
+            networkType: network.networkType
+        )
+
+        storage = FSCompactBlockRepository(
+            fsBlockDbRoot: testTempDirectory,
+            metadataStore: FSMetadataStore.live(
+                fsBlockDbRoot: testTempDirectory,
+                rustBackend: rustBackend,
+                logger: logger
+            ),
+            blockDescriptor: .live,
+            contentProvider: DirectoryListingProviders.defaultSorted,
+            logger: logger
+        )
+        try await storage.create()
+
+        downloader = BlockDownloaderServiceImpl(service: service, storage: storage)
+        darksideWalletService = DarksideWalletService(endpoint: LightWalletEndpointBuilder.default, service: service as! LightWalletGRPCService)
         
         try FakeChainBuilder.buildChain(darksideWallet: darksideWalletService, branchID: branchID, chainName: chainName)
         try darksideWalletService.applyStaged(nextLatestHeight: 663250)
+
+        sleep(2)
     }
     
     override func tearDown() {
+        super.tearDown()
+        try? testFileManager.removeItem(at: testTempDirectory)
+        darksideWalletService = nil
         service = nil
         storage = nil
         downloader = nil
-        try? FileManager.default.removeItem(at: cacheDB)
+        rustBackend = nil
+        testTempDirectory = nil
     }
-    
-    func testSmallDownloadAsync() {
-        let expect = XCTestExpectation(description: self.description)
-        expect.expectedFulfillmentCount = 3
+
+    func testSmallDownload() async {
         let lowerRange: BlockHeight = self.network.constants.saplingActivationHeight
         let upperRange: BlockHeight = self.network.constants.saplingActivationHeight + 99
         
         let range = CompactBlockRange(uncheckedBounds: (lowerRange, upperRange))
-        downloader.downloadBlockRange(range) { error in
-            expect.fulfill()
-            XCTAssertNil(error)
+        do {
+            try await downloader.downloadBlockRange(range)
             
             // check what was 'stored'
-            self.storage.latestHeight { result in
-                expect.fulfill()
-                
-                XCTAssertTrue(self.validate(result: result, against: upperRange))
-                
-                self.downloader.lastDownloadedBlockHeight { resultHeight in
-                    expect.fulfill()
-                    XCTAssertTrue(self.validate(result: resultHeight, against: upperRange))
-                }
-            }
+            let latestHeight = await self.storage.latestHeight()
+            XCTAssertEqual(latestHeight, upperRange)
+            
+            let resultHeight = try await self.downloader.lastDownloadedBlockHeight()
+            XCTAssertEqual(resultHeight, upperRange)
+        } catch {
+            XCTFail("testSmallDownload() shouldn't fail \(error)")
         }
-        
-        wait(for: [expect], timeout: 2)
     }
     
-    func testSmallDownload() {
-        let lowerRange: BlockHeight = self.network.constants.saplingActivationHeight
-        let upperRange: BlockHeight = self.network.constants.saplingActivationHeight + 99
-        
-        let range = CompactBlockRange(uncheckedBounds: (lowerRange, upperRange))
-        var latest: BlockHeight = 0
-        
-        do {
-            latest = try downloader.lastDownloadedBlockHeight()
-        } catch {
-            XCTFail(error.localizedDescription)
-        }
-        
-        XCTAssertEqual(latest, BlockHeight.empty())
-        XCTAssertNoThrow(try downloader.downloadBlockRange(range))
-        
-        var currentLatest: BlockHeight = 0
-        do {
-            currentLatest = try downloader.lastDownloadedBlockHeight()
-        } catch {
-            XCTFail("latest block failed")
-            return
-        }
-
-        XCTAssertEqual(currentLatest, upperRange )
-    }
-    
-    func testFailure() {
-        let awfulDownloader = CompactBlockDownloader(
+    func testFailure() async {
+        let awfulDownloader = BlockDownloaderServiceImpl(
             service: AwfulLightWalletService(
                 latestBlockHeight: self.network.constants.saplingActivationHeight + 1000,
                 service: darksideWalletService
@@ -103,18 +95,16 @@ class BlockDownloaderTests: XCTestCase {
             storage: ZcashConsoleFakeStorage()
         )
         
-        let expect = XCTestExpectation(description: self.description)
-        expect.expectedFulfillmentCount = 1
         let lowerRange: BlockHeight = self.network.constants.saplingActivationHeight
         let upperRange: BlockHeight = self.network.constants.saplingActivationHeight + 99
         
         let range = CompactBlockRange(uncheckedBounds: (lowerRange, upperRange))
-        
-        awfulDownloader.downloadBlockRange(range) { error in
-            expect.fulfill()
+
+        do {
+            try await awfulDownloader.downloadBlockRange(range)
+        } catch {
             XCTAssertNotNil(error)
         }
-        wait(for: [expect], timeout: 2)
     }
 }
 

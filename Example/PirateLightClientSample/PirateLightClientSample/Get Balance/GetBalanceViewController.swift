@@ -15,20 +15,20 @@ class GetBalanceViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        let synchronizer = AppDelegate.shared.sharedSynchronizer
         self.title = "Account 0 Balance"
-        self.balance.text = "\(Initializer.shared.getBalance().asHumanReadableArrrBalance()) ARRR"
-        self.verified.text = "\(Initializer.shared.getVerifiedBalance().asHumanReadableArrrBalance()) ARRR"
+
+        Task { @MainActor in
+            let balanceText = (try? await synchronizer.getShieldedBalance().formattedString) ?? "0.0"
+            let verifiedText = (try? await synchronizer.getShieldedVerifiedBalance().formattedString) ?? "0.0"
+            self.balance.text = "\(balanceText) ZEC"
+            self.verified.text = "\(verifiedText) ZEC"
+        }
     }
 }
 
-extension Int64 {
-    func asHumanReadableArrrBalance() -> Double {
-        Double(self) / Double(PirateSDK.zatoshiPerARRR)
-    }
-}
-
-extension Double {
-    func toZatoshi() -> Int64 {
-        Int64(self * Double(PirateSDK.zatoshiPerARRR))
+extension Zatoshi {
+    var formattedString: String? {
+        NumberFormatter.zcashNumberFormatter.string(from: NSNumber(value: self.amount))
     }
 }

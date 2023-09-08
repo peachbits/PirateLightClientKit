@@ -10,39 +10,107 @@ import UIKit
 import PirateLightClientKit
 
 final class TransactionDetailModel {
-    var id: String?
-    var minedHeight: String?
-    var expiryHeight: String?
-    var created: String?
-    var zatoshi: String?
-    var memo: String?
+    enum Transaction {
+        case sent(ZcashTransaction.Overview)
+        case received(ZcashTransaction.Overview)
+        case pending(ZcashTransaction.Overview)
+        case cleared(ZcashTransaction.Overview)
+    }
+
+    let transaction: Transaction
+    var id: Data?
+    var minedHeight: BlockHeight?
+    var expiryHeight: BlockHeight?
+    var created: Date?
+    var zatoshi: Zatoshi
+    var memo: Memo?
     
-    init() {}
-    
-    init(confirmedTransaction: ConfirmedTransactionEntity) {
-        self.id = confirmedTransaction.rawTransactionId?.toHexStringTxId()
-        self.minedHeight = confirmedTransaction.minedHeight.description
-        self.expiryHeight = confirmedTransaction.expiryHeight?.description
-        self.created = Date(timeIntervalSince1970: confirmedTransaction.blockTimeInSeconds).description
-        self.zatoshi = confirmedTransaction.value.description
-        if let memoData = confirmedTransaction.memo, let memoString = String(bytes: memoData, encoding: .utf8) {
-            self.memo = memoString
+    init(sendTransaction transaction: ZcashTransaction.Overview, memos: [Memo]) {
+        self.transaction = .sent(transaction)
+        self.id = transaction.rawID
+        self.minedHeight = transaction.minedHeight
+        self.expiryHeight = transaction.expiryHeight
+
+        self.zatoshi = transaction.value
+        self.memo = memos.first
+
+        if let blockTime = transaction.blockTime {
+            created = Date(timeIntervalSince1970: blockTime)
+        } else {
+            created = nil
         }
     }
-    init(pendingTransaction: PendingTransactionEntity) {
-        self.id = pendingTransaction.rawTransactionId?.toHexStringTxId()
-        self.minedHeight = pendingTransaction.minedHeight.description
-        self.expiryHeight = pendingTransaction.expiryHeight.description
-        self.created = Date(timeIntervalSince1970: pendingTransaction.createTime).description
-        self.zatoshi = pendingTransaction.value.description
+
+    init(receivedTransaction transaction: ZcashTransaction.Overview, memos: [Memo]) {
+        self.transaction = .received(transaction)
+        self.id = transaction.rawID
+        self.minedHeight = transaction.minedHeight
+        self.expiryHeight = transaction.expiryHeight
+        self.zatoshi = transaction.value
+        self.memo = memos.first
+        self.created = Date(timeIntervalSince1970: transaction.blockTime ?? Date().timeIntervalSince1970)
     }
     
-    init(transaction: TransactionEntity) {
-        self.id = transaction.transactionId.toHexStringTxId()
-        self.minedHeight = transaction.minedHeight?.description ?? "no height"
-        self.expiryHeight = transaction.expiryHeight?.description ?? "no height"
-        self.created = transaction.created ?? "no date"
-        self.zatoshi = "not available in this entity"
+    init(pendingTransaction transaction: ZcashTransaction.Overview, memos: [Memo]) {
+        self.transaction = .pending(transaction)
+        self.id = transaction.rawID
+        self.minedHeight = transaction.minedHeight
+        self.expiryHeight = transaction.expiryHeight
+        self.created = Date(timeIntervalSince1970: transaction.blockTime ?? Date().timeIntervalSince1970)
+        self.zatoshi = transaction.value
+        self.memo = memos.first
+    }
+    
+    init(transaction: ZcashTransaction.Overview, memos: [Memo]) {
+        self.transaction = .cleared(transaction)
+        self.id = transaction.rawID
+        self.minedHeight = transaction.minedHeight
+        self.expiryHeight = transaction.expiryHeight
+        self.zatoshi = transaction.value
+        self.memo = memos.first
+
+        if let blockTime = transaction.blockTime {
+            created = Date(timeIntervalSince1970: blockTime)
+        } else {
+            created = nil
+        }
+    }
+
+    func loadMemos(from synchronizer: Synchronizer) async throws -> [Memo] {
+        switch transaction {
+        case let .sent(transaction):
+            return try await synchronizer.getMemos(for: transaction)
+        case let .received(transaction):
+            return try await synchronizer.getMemos(for: transaction)
+        case .pending:
+            return []
+        case let .cleared(transaction):
+            return try await synchronizer.getMemos(for: transaction)
+        }
+    }
+
+    func loadMemos(from synchronizer: Synchronizer, completion: @escaping (Result<[Memo], Error>) -> Void) {
+        Task {
+            do {
+                let memos = try await loadMemos(from: synchronizer)
+                DispatchQueue.main.async {
+                    completion(.success(memos))
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+}
+extension TransactionDetailModel {
+    var dateDescription: String {
+        self.created?.formatted(date: .abbreviated, time: .shortened) ?? "No date"
+    }
+
+    var amountDescription: String {
+        self.zatoshi.amount.description
     }
 }
 
@@ -65,13 +133,28 @@ class TransactionDetailViewController: UITableViewController {
     
     func setup() {
         guard model != nil else { return }
-        idLabel.text = model.id
-        minedHeightLabel.text = model.minedHeight ?? "no height"
-        expiryHeightLabel.text = model.expiryHeight ?? "no height"
-        createdLabel.text = model.created
-        zatoshiLabel.text = model.zatoshi
-        memoLabel.text = model.memo ?? "No memo"
-        loggerProxy.debug("tx id: \(model.id ?? "no id!!"))")
+        idLabel.text = model.id?.toHexStringTxId()
+        minedHeightLabel.text = model.minedHeight?.description ?? "no height"
+        expiryHeightLabel.text = model.expiryHeight?.description ?? "no height"
+        createdLabel.text = model.created?.ISO8601Format()
+        zatoshiLabel.text = model.zatoshi.amount.description
+        memoLabel.text = model.memo?.toString() ?? "No memo"
+        loggerProxy.debug("tx id: \(model.id?.toHexStringTxId() ?? "no id!!"))")
+
+        Task {
+            do {
+                let memos = try await model.loadMemos(from: AppDelegate.shared.sharedSynchronizer)
+                DispatchQueue.main.async { [weak self] in
+                    self?.didLoad(memos: memos)
+                }
+            } catch {
+                loggerProxy.error("Error when loading memos: \(error)")
+            }
+        }
+    }
+
+    func didLoad(memos: [Memo]) {
+        memoLabel.text = memos.first?.toString()
     }
     
     func formatMemo(_ memo: Data?) -> String {
@@ -80,7 +163,7 @@ class TransactionDetailViewController: UITableViewController {
     }
     
     func heightToString(height: BlockHeight?) -> String {
-        guard let height = height else { return "NULL" }
+        guard let height else { return "NULL" }
         return String(height)
     }
 }

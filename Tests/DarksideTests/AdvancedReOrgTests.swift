@@ -5,20 +5,13 @@
 //  Created by Francisco Gindre on 5/14/20.
 //
 
+import Combine
 import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
 
-// swiftlint:disable implicitly_unwrapped_optional force_unwrapping type_body_length
-class AdvancedReOrgTests: XCTestCase {
-    // TODO: Parameterize this from environment?
-    // swiftlint:disable:next line_length
-    var seedPhrase = "still champion voice habit trend flight survey between bitter process artefact blind carbon truly provide dizzy crush flush breeze blouse charge solid fish spread"
-
-    // TODO: Parameterize this from environment
-    let testRecipientAddress = "zs17mg40levjezevuhdp5pqrd52zere7r7vrjgdwn5sj4xsqtm20euwahv9anxmwr3y3kmwuz8k55a"
-
-    let sendAmount: Int64 = 1000
+class AdvancedReOrgTests: ZcashTestCase {
+    let sendAmount = Zatoshi(1000)
     var birthday: BlockHeight = 663150
     let defaultLatestHeight: BlockHeight = 663175
     var coordinator: TestCoordinator!
@@ -30,65 +23,60 @@ class AdvancedReOrgTests: XCTestCase {
     let branchID = "2bb40e60"
     let chainName = "main"
     let network = DarksideWalletDNetwork()
-    
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        coordinator = try TestCoordinator(
-            seed: seedPhrase,
-            walletBirthday: birthday,
-            channelProvider: ChannelProvider(),
+    var cancellables: [AnyCancellable] = []
+
+    override func setUp() async throws {
+        try await super.setUp()
+        // don't use an exact birthday, users never do.
+        self.coordinator = try await TestCoordinator(
+            container: mockContainer,
+            walletBirthday: birthday + 50,
             network: network
         )
         try coordinator.reset(saplingActivation: 663150, branchID: self.branchID, chainName: self.chainName)
     }
-    
-    override func tearDownWithError() throws {
-        try super.tearDownWithError()
-        NotificationCenter.default.removeObserver(self)
-        try coordinator.stop()
-        try? FileManager.default.removeItem(at: coordinator.databases.cacheDB)
+
+    override func tearDown() async throws {
+        try await super.tearDown()
+        let coordinator = self.coordinator!
+        self.coordinator = nil
+        cancellables = []
+
+        try await coordinator.stop()
+        try? FileManager.default.removeItem(at: coordinator.databases.fsCacheDbRoot)
         try? FileManager.default.removeItem(at: coordinator.databases.dataDB)
-        try? FileManager.default.removeItem(at: coordinator.databases.pendingDB)
     }
     
-    @objc func handleReorg(_ notification: Notification) {
-        guard
-            let reorgHeight = notification.userInfo?[CompactBlockProcessorNotificationKey.reorgHeight] as? BlockHeight,
-            let rewindHeight = notification.userInfo?[CompactBlockProcessorNotificationKey.rewindHeight] as? BlockHeight
-        else {
-            XCTFail("empty reorg notification")
-            return
-        }
+    func handleReorg(event: CompactBlockProcessor.Event) {
+        guard case let .handledReorg(reorgHeight, rewindHeight) = event else { return XCTFail("empty reorg event") }
 
-        logger!.debug("--- REORG DETECTED \(reorgHeight)--- RewindHeight: \(rewindHeight)", file: #file, function: #function, line: #line)
+        logger.debug("--- REORG DETECTED \(reorgHeight)--- RewindHeight: \(rewindHeight)", file: #file, function: #function, line: #line)
 
         XCTAssertEqual(reorgHeight, expectedReorgHeight)
         reorgExpectation.fulfill()
     }
     
-    /*
-    pre-condition: know balances before tx at received_Tx_height arrives
-    1. Setup w/ default dataset
-    2. applyStaged(received_Tx_height)
-    3. sync up to received_Tx_height
-    3a. verify that balance is previous balance + tx amount
-    4. get that transaction hex encoded data
-    5. stage 5 empty blocks w/heights received_Tx_height to received_Tx_height + 3
-    6. stage tx at received_Tx_height + 3
-    6a. applyheight(received_Tx_height + 1)
-    7. sync to received_Tx_height + 1
-    8. assert that reorg happened at received_Tx_height
-    9. verify that balance equals initial balance
-    10. sync up to received_Tx_height + 3
-    11. verify that balance equals initial balance + tx amount
-    */
-    func testReOrgChangesInboundTxMinedHeight() throws {
-        hookToReOrgNotification()
+    /// pre-condition: know balances before tx at received_Tx_height arrives
+    /// 1. Setup w/ default dataset
+    /// 2. applyStaged(received_Tx_height)
+    /// 3. sync up to received_Tx_height
+    /// 3a. verify that balance is previous balance + tx amount
+    /// 4. get that transaction hex encoded data
+    /// 5. stage 5 empty blocks w/heights received_Tx_height to received_Tx_height + 3
+    /// 6. stage tx at received_Tx_height + 3
+    /// 6a. applyheight(received_Tx_height + 1)
+    /// 7. sync to received_Tx_height + 1
+    /// 8. assert that reorg happened at received_Tx_height
+    /// 9. verify that balance equals initial balance
+    /// 10. sync up to received_Tx_height + 3
+    /// 11. verify that balance equals initial balance + tx amount
+    func testReOrgChangesInboundTxMinedHeight() async throws {
+        await hookToReOrgNotification()
         try FakeChainBuilder.buildChain(darksideWallet: coordinator.service, branchID: branchID, chainName: chainName)
         var shouldContinue = false
         let receivedTxHeight: BlockHeight = 663188
-        var initialTotalBalance: Int64 = -1
-        var initialVerifiedBalance: Int64 = -1
+        var initialTotalBalance = Zatoshi(-1)
+        var initialVerifiedBalance = Zatoshi(-1)
         self.expectedReorgHeight = receivedTxHeight + 1
         
         /*
@@ -100,18 +88,22 @@ class AdvancedReOrgTests: XCTestCase {
         
         var synchronizer: SDKSynchronizer?
         
-        try coordinator.sync(
-            completion: { synchro in
-                synchronizer = synchro
-                initialVerifiedBalance = synchro.initializer.getVerifiedBalance()
-                initialTotalBalance = synchro.initializer.getBalance()
-                preTxExpectation.fulfill()
-                shouldContinue = true
-            },
-            error: self.handleError
-        )
+        do {
+            try await coordinator.sync(
+                completion: { synchro in
+                    synchronizer = synchro
+                    initialVerifiedBalance = try await synchro.getShieldedVerifiedBalance()
+                    initialTotalBalance = try await synchro.getShieldedBalance()
+                    preTxExpectation.fulfill()
+                    shouldContinue = true
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
         
-        wait(for: [preTxExpectation], timeout: 10)
+        await fulfillment(of: [preTxExpectation], timeout: 10)
         
         guard shouldContinue else {
             XCTFail("pre receive sync failed")
@@ -128,24 +120,31 @@ class AdvancedReOrgTests: XCTestCase {
         3. sync up to received_Tx_height
         */
         let receivedTxExpectation = XCTestExpectation(description: "received tx")
-        var receivedTxTotalBalance = Int64(-1)
-        var receivedTxVerifiedBalance = Int64(-1)
+        var receivedTxTotalBalance = Zatoshi(-1)
+        var receivedTxVerifiedBalance = Zatoshi(-1)
         
-        try coordinator.sync(completion: { synchro in
-            synchronizer = synchro
-            receivedTxVerifiedBalance = synchro.initializer.getVerifiedBalance()
-            receivedTxTotalBalance = synchro.initializer.getBalance()
-            receivedTxExpectation.fulfill()
-        }, error: self.handleError)
+        do {
+            try await coordinator.sync(
+                completion: { synchro in
+                    synchronizer = synchro
+                    receivedTxVerifiedBalance = try await synchro.getShieldedVerifiedBalance()
+                    receivedTxTotalBalance = try await synchro.getShieldedBalance()
+                    receivedTxExpectation.fulfill()
+                }, error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
         sleep(2)
-        wait(for: [receivedTxExpectation], timeout: 10)
+        await fulfillment(of: [receivedTxExpectation], timeout: 10)
         
         guard let syncedSynchronizer = synchronizer else {
             XCTFail("nil synchronizer")
             return
         }
         sleep(5)
-        guard let receivedTx = syncedSynchronizer.receivedTransactions.first, receivedTx.minedHeight == receivedTxHeight else {
+        guard let receivedTx = await syncedSynchronizer.receivedTransactions.first, receivedTx.minedHeight == receivedTxHeight else {
             XCTFail("did not receive transaction")
             return
         }
@@ -153,16 +152,13 @@ class AdvancedReOrgTests: XCTestCase {
         /*
         3a. verify that balance is previous balance + tx amount
         */
-        XCTAssertEqual(receivedTxTotalBalance, initialTotalBalance + Int64(receivedTx.value))
+        XCTAssertEqual(receivedTxTotalBalance, initialTotalBalance + receivedTx.value)
         XCTAssertEqual(receivedTxVerifiedBalance, initialVerifiedBalance)
 
         /*
         4. get that transaction hex encoded data
         */
-        guard let receivedTxData = receivedTx.raw else {
-            XCTFail("received tx has no raw data!")
-            return
-        }
+        let receivedTxData = receivedTx.raw ?? Data()
         
         let receivedRawTx = RawTransaction.with { rawTx in
             rawTx.height = UInt64(receivedTxHeight)
@@ -192,20 +188,27 @@ class AdvancedReOrgTests: XCTestCase {
         */
         let reorgSyncexpectation = XCTestExpectation(description: "reorg expectation")
         
-        var afterReorgTxTotalBalance = Int64(-1)
-        var afterReorgTxVerifiedBalance = Int64(-1)
+        var afterReorgTxTotalBalance = Zatoshi(-1)
+        var afterReorgTxVerifiedBalance = Zatoshi(-1)
         
-        try coordinator.sync(completion: { synchronizer in
-            afterReorgTxTotalBalance = synchronizer.initializer.getBalance()
-            afterReorgTxVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            reorgSyncexpectation.fulfill()
-        }, error: self.handleError(_:))
-        
+        do {
+            try await coordinator.sync(
+                completion: { synchronizer in
+                    afterReorgTxTotalBalance = try await synchronizer.getShieldedBalance()
+                    afterReorgTxVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                    reorgSyncexpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
         /*
         8. assert that reorg happened at received_Tx_height
         */
         sleep(2)
-        wait(for: [reorgExpectation, reorgSyncexpectation], timeout: 5, enforceOrder: false)
+        await fulfillment(of: [reorgExpectation, reorgSyncexpectation], timeout: 5, enforceOrder: false)
 
         /*
         9. verify that balance equals initial balance
@@ -218,60 +221,66 @@ class AdvancedReOrgTests: XCTestCase {
         */
         let finalsyncExpectation = XCTestExpectation(description: "final sync")
         
-        var finalReorgTxTotalBalance = Int64(-1)
-        var finalReorgTxVerifiedBalance = Int64(-1)
+        var finalReorgTxTotalBalance = Zatoshi(-1)
+        var finalReorgTxVerifiedBalance = Zatoshi(-1)
         
         try coordinator.applyStaged(blockheight: reorgedTxheight + 1)
         sleep(3)
-        try coordinator.sync(completion: { synchronizer in
-            finalReorgTxTotalBalance = synchronizer.initializer.getBalance()
-            finalReorgTxVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            finalsyncExpectation.fulfill()
-        }, error: self.handleError(_:))
         
-        wait(for: [finalsyncExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { synchronizer in
+                    finalReorgTxTotalBalance = try await synchronizer.getShieldedBalance()
+                    finalReorgTxVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                    finalsyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [finalsyncExpectation], timeout: 5)
         sleep(3)
         
-        guard let reorgedTx = coordinator.synchronizer.receivedTransactions.first else {
+        guard let reorgedTx = await coordinator.synchronizer.receivedTransactions.first else {
             XCTFail("no transactions found")
             return
         }
         
         XCTAssertEqual(reorgedTx.minedHeight, reorgedTxheight)
         XCTAssertEqual(initialVerifiedBalance, finalReorgTxVerifiedBalance)
-        XCTAssertEqual(initialTotalBalance + Int64(receivedTx.value), finalReorgTxTotalBalance)
+        XCTAssertEqual(initialTotalBalance + receivedTx.value, finalReorgTxTotalBalance)
     }
     
-    /**
-    An outbound, unconfirmed transaction in a specific block changes height in the event of a reorg
-     
-     
-    The wallet handles this change, reflects it appropriately in local storage, and funds remain spendable post confirmation.
-     
-    Pre-conditions:
-    - Wallet has spendable funds
-     
-    1. Setup w/ default dataset
-    2. applyStaged(received_Tx_height)
-    3. sync up to received_Tx_height
-    4. create transaction
-    5. stage 10 empty blocks
-    6. submit tx at sentTxHeight
-    6a. getIncomingTx
-    6b. stageTransaction(sentTx, sentTxHeight)
-    6c. applyheight(sentTxHeight + 1 )
-    7. sync to  sentTxHeight + 2
-    8. stage sentTx and otherTx at sentTxheight
-    9. applyStaged(sentTx + 2)
-    10. sync up to received_Tx_height + 2
-    11. verify that the sent tx is mined and balance is correct
-    12. applyStaged(sentTx + 10)
-    13. verify that there's no more pending transaction
-    */
-    func testReorgChangesOutboundTxIndex() throws {
+    /// An outbound, unconfirmed transaction in a specific block changes height in the event of a reorg
+    ///
+    ///
+    /// The wallet handles this change, reflects it appropriately in local storage, and funds remain spendable post confirmation.
+    ///
+    /// Pre-conditions:
+    /// - Wallet has spendable funds
+    ///
+    /// 1. Setup w/ default dataset
+    /// 2. applyStaged(received_Tx_height)
+    /// 3. sync up to received_Tx_height
+    /// 4. create transaction
+    /// 5. stage 10 empty blocks
+    /// 6. submit tx at sentTxHeight
+    ///   a. getIncomingTx
+    ///   b. stageTransaction(sentTx, sentTxHeight)
+    ///   c. applyheight(sentTxHeight + 1 )
+    /// 7. sync to  sentTxHeight + 2
+    /// 8. stage sentTx and otherTx at sentTxheight
+    /// 9. applyStaged(sentTx + 2)
+    /// 10. sync up to received_Tx_height + 2
+    /// 11. verify that the sent tx is mined and balance is correct
+    /// 12. applyStaged(sentTx + 10)
+    /// 13. verify that there's no more pending transaction
+    func testReorgChangesOutboundTxIndex() async throws {
         try FakeChainBuilder.buildChain(darksideWallet: self.coordinator.service, branchID: branchID, chainName: chainName)
         let receivedTxHeight: BlockHeight = 663188
-        var initialTotalBalance: Int64 = -1
+        var initialTotalBalance = Zatoshi(-1)
         
         /*
         2. applyStaged(received_Tx_height)
@@ -280,44 +289,50 @@ class AdvancedReOrgTests: XCTestCase {
         
         sleep(2)
         let preTxExpectation = XCTestExpectation(description: "pre receive")
-        
+
         /*
         3. sync up to received_Tx_height
         */
-        try coordinator.sync(completion: { synchronizer in
-            initialTotalBalance = synchronizer.initializer.getBalance()
-            preTxExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [preTxExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { synchronizer in
+                    initialTotalBalance = try await synchronizer.getShieldedBalance()
+                    preTxExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [preTxExpectation], timeout: 5)
         
         let sendExpectation = XCTestExpectation(description: "sendToAddress")
-        var pendingEntity: PendingTransactionEntity?
-        var error: Error?
-        let sendAmount: Int64 = 10000
+        var pendingEntity: ZcashTransaction.Overview?
+        var testError: Error?
+        let sendAmount = Zatoshi(10000)
 
         /*
         4. create transaction
         */
-        coordinator.synchronizer.sendToAddress(
-            spendingKey: coordinator.spendingKeys!.first!,
-            zatoshi: sendAmount,
-            toAddress: testRecipientAddress,
-            memo: "test transaction",
-            from: 0
-        ) { result in
-            switch result {
-            case .success(let pending):
-                pendingEntity = pending
-            case .failure(let e):
-                error = e
-            }
+        do {
+            let pendingTx = try await coordinator.synchronizer.sendToAddress(
+                spendingKey: coordinator.spendingKey,
+                zatoshi: sendAmount,
+                toAddress: try Recipient(Environment.testRecipientAddress, network: self.network.networkType),
+                memo: try Memo(string: "test transaction")
+            )
+            pendingEntity = pendingTx
             sendExpectation.fulfill()
-        }
-        wait(for: [sendExpectation], timeout: 12)
-        
-        guard let pendingTx = pendingEntity else {
+        } catch {
+            testError = error
             XCTFail("error sending to address. Error: \(String(describing: error))")
+        }
+        
+        await fulfillment(of: [sendExpectation], timeout: 2)
+
+        guard let pendingTx = pendingEntity else {
+            XCTFail("error sending to address. Error: \(String(describing: testError))")
             return
         }
         
@@ -349,17 +364,20 @@ class AdvancedReOrgTests: XCTestCase {
         */
         let sentTxSyncExpectation = XCTestExpectation(description: "sent tx sync expectation")
         
-        try coordinator.sync(
-            completion: { synchronizer in
-                let pMinedHeight = synchronizer.pendingTransactions.first?.minedHeight
-                XCTAssertEqual(pMinedHeight, sentTxHeight)
+        do {
+            try await coordinator.sync(
+                completion: { synchronizer in
+                    let pMinedHeight = await synchronizer.pendingTransactions.first?.minedHeight
+                    XCTAssertEqual(pMinedHeight, sentTxHeight)
+                    sentTxSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
 
-                sentTxSyncExpectation.fulfill()
-            },
-            error: self.handleError
-        )
-        
-        wait(for: [sentTxSyncExpectation], timeout: 5)
+        await fulfillment(of: [sentTxSyncExpectation], timeout: 5)
         
         /*
         8. stage sentTx and otherTx at sentTxheight
@@ -374,21 +392,29 @@ class AdvancedReOrgTests: XCTestCase {
         try coordinator.applyStaged(blockheight: sentTxHeight + 1)
         
         sleep(2)
+
+        print("Starting after reorg sync")
         let afterReOrgExpectation = XCTestExpectation(description: "after ReOrg Expectation")
-        try coordinator.sync(
-            completion: { synchronizer in
-                /*
-                11. verify that the sent tx is mined and balance is correct
-                */
-                let pMinedHeight = synchronizer.pendingTransactions.first?.minedHeight
-                XCTAssertEqual(pMinedHeight, sentTxHeight)
-                XCTAssertEqual(initialTotalBalance - sendAmount - Int64(1000), synchronizer.initializer.getBalance()) // fee change on this branch
-                afterReOrgExpectation.fulfill()
-            },
-            error: self.handleError
-        )
-        
-        wait(for: [afterReOrgExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { synchronizer in
+                    /*
+                    11. verify that the sent tx is mined and balance is correct
+                    */
+                    let pMinedHeight = await synchronizer.pendingTransactions.first?.minedHeight
+                    XCTAssertEqual(pMinedHeight, sentTxHeight)
+                    // fee change on this branch
+                    let expectedBalance = try await synchronizer.getShieldedBalance()
+                    XCTAssertEqual(initialTotalBalance - sendAmount - Zatoshi(1000), expectedBalance)
+                    afterReOrgExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [afterReOrgExpectation], timeout: 5)
         
         /*
         12. applyStaged(sentTx + 10)
@@ -400,20 +426,31 @@ class AdvancedReOrgTests: XCTestCase {
         13. verify that there's no more pending transaction
         */
         let lastSyncExpectation = XCTestExpectation(description: "sync to confirmation")
-        
-        try coordinator.sync(completion: { _ in
-            lastSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [lastSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(coordinator.synchronizer.pendingTransactions.count, 0)
-        XCTAssertEqual(initialTotalBalance - Int64(pendingTx.value) - Int64(1000), coordinator.synchronizer.initializer.getVerifiedBalance())
-        XCTAssertEqual(coordinator.synchronizer.initializer.getBalance(), coordinator.synchronizer.initializer.getVerifiedBalance())
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    lastSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [lastSyncExpectation], timeout: 5)
+
+        let expectedVerifiedBalance = initialTotalBalance + pendingTx.value
+        let currentVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedPendingTransactionsCount = await coordinator.synchronizer.pendingTransactions.count
+        XCTAssertEqual(expectedPendingTransactionsCount, 0)
+        XCTAssertEqual(expectedVerifiedBalance, currentVerifiedBalance)
+
+        let resultingBalance: Zatoshi = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(resultingBalance, currentVerifiedBalance)
     }
     
-    func testIncomingTransactionIndexChange() throws {
-        hookToReOrgNotification()
+    func testIncomingTransactionIndexChange() async throws {
+        await hookToReOrgNotification()
         self.expectedReorgHeight = 663196
         self.expectedRewindHeight = 663175
         try coordinator.reset(saplingActivation: birthday, branchID: "2bb40e60", chainName: "main")
@@ -421,16 +458,19 @@ class AdvancedReOrgTests: XCTestCase {
         try coordinator.applyStaged(blockheight: 663195)
         sleep(1)
         let firstSyncExpectation = XCTestExpectation(description: "first sync expectation")
+
+        var preReorgTotalBalance = Zatoshi.zero
+        var preReorgVerifiedBalance = Zatoshi.zero
+        try await coordinator.sync(
+            completion: { synchronizer in
+                preReorgTotalBalance = try await synchronizer.getShieldedBalance()
+                preReorgVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                firstSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        var preReorgTotalBalance = Int64(0)
-        var preReorgVerifiedBalance = Int64(0)
-        try coordinator.sync(completion: { synchronizer in
-            preReorgTotalBalance = synchronizer.initializer.getBalance()
-            preReorgVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [firstSyncExpectation], timeout: 10)
+        await fulfillment(of: [firstSyncExpectation], timeout: 10)
         
         /*
         trigger reorg
@@ -442,54 +482,66 @@ class AdvancedReOrgTests: XCTestCase {
         
         let afterReorgSync = XCTestExpectation(description: "after reorg sync")
         
-        var postReorgTotalBalance = Int64(0)
-        var postReorgVerifiedBalance = Int64(0)
-        try coordinator.sync(completion: { synchronizer in
-            postReorgTotalBalance = synchronizer.initializer.getBalance()
-            postReorgVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            afterReorgSync.fulfill()
-        }, error: self.handleError)
+        var postReorgTotalBalance = Zatoshi.zero
+        var postReorgVerifiedBalance = Zatoshi.zero
+        try await coordinator.sync(
+            completion: { synchronizer in
+                postReorgTotalBalance = try await synchronizer.getShieldedBalance()
+                postReorgVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                afterReorgSync.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [reorgExpectation, afterReorgSync], timeout: 15)
+        await fulfillment(of: [reorgExpectation, afterReorgSync], timeout: 30)
         
         XCTAssertEqual(postReorgVerifiedBalance, preReorgVerifiedBalance)
         XCTAssertEqual(postReorgTotalBalance, preReorgTotalBalance)
     }
     
-    func testReOrgExpiresInboundTransaction() throws {
+    func testReOrgExpiresInboundTransaction() async throws {
         try FakeChainBuilder.buildChain(darksideWallet: coordinator.service, branchID: branchID, chainName: chainName)
         let receivedTxHeight = BlockHeight(663188)
         try coordinator.applyStaged(blockheight: receivedTxHeight - 1)
         sleep(2)
         let expectation = XCTestExpectation(description: "sync to \(receivedTxHeight - 1) expectation")
-        var initialBalance: Int64 = -1
-        var initialVerifiedBalance: Int64 = -1
-        try coordinator.sync(completion: { synchronizer in
-            initialBalance = synchronizer.initializer.getBalance()
-            initialVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            expectation.fulfill()
-        }, error: self.handleError)
+        var initialBalance = Zatoshi(-1)
+        var initialVerifiedBalance = Zatoshi(-1)
+
+        try await coordinator.sync(
+            completion: { synchronizer in
+                initialBalance = try await synchronizer.getShieldedBalance()
+                initialVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                expectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [expectation], timeout: 5)
+        await fulfillment(of: [expectation], timeout: 5)
         
         let afterTxHeight = receivedTxHeight + 1
         try coordinator.applyStaged(blockheight: afterTxHeight)
         sleep(2)
         let afterTxSyncExpectation = XCTestExpectation(description: "sync to \(afterTxHeight) expectation")
         
-        var afterTxBalance: Int64 = -1
-        var afterTxVerifiedBalance: Int64 = -1
-        try coordinator.sync(completion: { synchronizer in
-            afterTxBalance = synchronizer.initializer.getBalance()
-            afterTxVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            XCTAssertNotNil(
-                synchronizer.receivedTransactions.first { $0.minedHeight == receivedTxHeight },
-                "Transaction not found at \(receivedTxHeight)"
-            )
-            afterTxSyncExpectation.fulfill()
-        }, error: self.handleError)
+        var afterTxBalance = Zatoshi(-1)
+        var afterTxVerifiedBalance = Zatoshi(-1)
+
+        try await coordinator.sync(
+            completion: { synchronizer in
+                afterTxBalance = try await synchronizer.getShieldedBalance()
+                afterTxVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                let receivedTransactions = await synchronizer.receivedTransactions
+                XCTAssertNotNil(
+                    receivedTransactions.first { $0.minedHeight == receivedTxHeight },
+                    "Transaction not found at \(receivedTxHeight)"
+                )
+                afterTxSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [afterTxSyncExpectation], timeout: 10.0)
+        await fulfillment(of: [afterTxSyncExpectation], timeout: 10.0)
         
         XCTAssertEqual(initialVerifiedBalance, afterTxVerifiedBalance)
         XCTAssertNotEqual(initialBalance, afterTxBalance)
@@ -502,82 +554,103 @@ class AdvancedReOrgTests: XCTestCase {
         sleep(2)
         let afterReorgExpectation = XCTestExpectation(description: "after reorg expectation")
         
-        var afterReOrgBalance: Int64 = -1
-        var afterReOrgVerifiedBalance: Int64 = -1
-        try coordinator.sync(completion: { synchronizer in
-            afterReOrgBalance = synchronizer.initializer.getBalance()
-            afterReOrgVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            XCTAssertNil(
-                synchronizer.receivedTransactions.first { $0.minedHeight == receivedTxHeight },
-                "Transaction found at \(receivedTxHeight) after reorg"
-            )
-            afterReorgExpectation.fulfill()
-        }, error: self.handleError)
+        var afterReOrgBalance = Zatoshi(-1)
+        var afterReOrgVerifiedBalance = Zatoshi(-1)
+
+        try await coordinator.sync(
+            completion: { synchronizer in
+                afterReOrgBalance = try await synchronizer.getShieldedBalance()
+                afterReOrgVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                let receivedTransactions = await synchronizer.receivedTransactions
+                XCTAssertNil(
+                    receivedTransactions.first { $0.minedHeight == receivedTxHeight },
+                    "Transaction found at \(receivedTxHeight) after reorg"
+                )
+                afterReorgExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [afterReorgExpectation], timeout: 5)
+        await fulfillment(of: [afterReorgExpectation], timeout: 5)
         
         XCTAssertEqual(afterReOrgBalance, initialBalance)
         XCTAssertEqual(afterReOrgVerifiedBalance, initialVerifiedBalance)
+
+        guard
+            let receivedTransaction = try await coordinator.synchronizer.allTransactions().first
+        else {
+            XCTFail("expected to have a received transaction, but found none")
+            return
+        }
+
+        let transactionOutputs = await coordinator.synchronizer.getTransactionOutputs(
+            for: receivedTransaction
+        )
+        
+        guard transactionOutputs.count == 1 else {
+            XCTFail("expected output count to be 1")
+            return
+        }
+
+        let output = transactionOutputs[0]
+
+        XCTAssertEqual(output.recipient, .internalAccount(0))
+        XCTAssertEqual(output.value, Zatoshi(100000))
     }
     
-    /**
-    Steps:
-    1.  sync up to an incoming transaction (incomingTxHeight + 1)
-    1a. save balances
-    2. stage 4 blocks from incomingTxHeight - 1 with different nonce
-    3. stage otherTx at incomingTxHeight
-    4. stage incomingTx at incomingTxHeight
-    5. applyHeight(incomingHeight + 3)
-    6. sync to latest height
-    7. check that balances still match
-    */
-    func testReOrgChangesInboundTxIndexInBlock() throws {
+    /// Steps:
+    /// 1.  sync up to an incoming transaction (incomingTxHeight + 1)
+    /// 1a. save balances
+    /// 2. stage 4 blocks from incomingTxHeight - 1 with different nonce
+    /// 3. stage otherTx at incomingTxHeight
+    /// 4. stage incomingTx at incomingTxHeight
+    /// 5. applyHeight(incomingHeight + 3)
+    /// 6. sync to latest height
+    /// 7. check that balances still match
+    func testReOrgChangesInboundTxIndexInBlock() async throws {
         try FakeChainBuilder.buildChain(darksideWallet: coordinator.service, branchID: branchID, chainName: chainName)
         
         let incomingTxHeight = BlockHeight(663188)
         
         try coordinator.applyStaged(blockheight: incomingTxHeight + 1)
+
+        sleep(1)
         
         /*
         1.  sync up to an incoming transaction (incomingTxHeight + 1)
         */
         let firstSyncExpectation = XCTestExpectation(description: "first sync test expectation")
         
-        var initialBalance: Int64 = -1
-        var initialVerifiedBalance: Int64 = -1
-        var incomingTx: ConfirmedTransactionEntity?
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
+        var initialBalance = Zatoshi(-1)
+        var initialVerifiedBalance = Zatoshi(-1)
+        var incomingTx: ZcashTransaction.Overview!
+
+        try await coordinator.sync(
+            completion: { _ in
+                firstSyncExpectation.fulfill()
+            }, error: self.handleError
+        )
         
-        wait(for: [firstSyncExpectation], timeout: 5)
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
         /*
         1a. save balances
         */
-        initialBalance = coordinator.synchronizer.initializer.getBalance()
-        initialVerifiedBalance = coordinator.synchronizer.initializer.getVerifiedBalance()
-        incomingTx = coordinator.synchronizer.receivedTransactions.first(where: { $0.minedHeight == incomingTxHeight })
+        initialBalance = try await coordinator.synchronizer.getShieldedBalance()
+        initialVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        incomingTx = await coordinator.synchronizer.receivedTransactions.first(where: { $0.minedHeight == incomingTxHeight })
 
-        guard let transaction = incomingTx else {
-            XCTFail("no tx found")
-            return
-        }
-        
-        guard let txRawData = transaction.raw else {
-            XCTFail("transaction has no raw data")
-            return
-        }
+        let txRawData = incomingTx.raw ?? Data()
         
         let rawTransaction = RawTransaction.with({ rawTx in
             rawTx.data = txRawData
         })
         
         /*
-        2. stage 4 blocks from incomingTxHeight - 1 with different nonce
+        2. stage 10 blocks from incomingTxHeight - 1 with different nonce
         */
-        let blockCount = 4
-        try coordinator.stageBlockCreate(height: incomingTxHeight - 1, count: blockCount, nonce: Int.random(in: 0 ... Int.max))
+        let blockCount = 10
+        try coordinator.stageBlockCreate(height: incomingTxHeight - 1, count: blockCount, nonce: 1)
         
         /*
         3. stage otherTx at incomingTxHeight
@@ -586,96 +659,107 @@ class AdvancedReOrgTests: XCTestCase {
         
         /*
         4. stage incomingTx at incomingTxHeight
-        5. applyHeight(incomingHeight + 3)
-        6. sync to latest height
-        7. check that balances still match
         */
         try coordinator.stageTransaction(rawTransaction, at: incomingTxHeight)
         
         /*
-        5. applyHeight(incomingHeight + 2)
+        5. applyHeight(incomingHeight + 3)
         */
-        try coordinator.applyStaged(blockheight: incomingTxHeight + 2)
+        try coordinator.applyStaged(blockheight: incomingTxHeight + 3)
+
+        sleep(1)
         
         let lastSyncExpectation = XCTestExpectation(description: "last sync expectation")
 
         /*
         6. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            lastSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
+        try await coordinator.sync(
+            completion: { _ in
+                lastSyncExpectation.fulfill()
+            }, error: self.handleError
+        )
+        await fulfillment(of: [lastSyncExpectation], timeout: 5)
+
         /*
         7. check that balances still match
         */
-        XCTAssertEqual(coordinator.synchronizer.initializer.getVerifiedBalance(), initialVerifiedBalance)
-        XCTAssertEqual(coordinator.synchronizer.initializer.getBalance(), initialBalance)
-        
-        wait(for: [lastSyncExpectation], timeout: 5)
+        let expectedVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(expectedVerifiedBalance, initialVerifiedBalance)
+        XCTAssertEqual(expectedBalance, initialBalance)
     }
     
-    func testTxIndexReorg() throws {
+    func testTxIndexReorg() async throws {
         try coordinator.resetBlocks(dataset: .predefined(dataset: .txIndexChangeBefore))
         
         let txReorgHeight = BlockHeight(663195)
         let finalHeight = BlockHeight(663200)
         try coordinator.applyStaged(blockheight: txReorgHeight)
+        sleep(1)
+
         let firstSyncExpectation = XCTestExpectation(description: "first sync test expectation")
-        var initialBalance: Int64 = -1
-        var initialVerifiedBalance: Int64 = -1
-        try coordinator.sync(completion: { synchronizer in
-            initialBalance = synchronizer.initializer.getBalance()
-            initialVerifiedBalance = synchronizer.initializer.getVerifiedBalance()
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
+        var initialBalance = Zatoshi(-1)
+        var initialVerifiedBalance = Zatoshi(-1)
+
+        try await coordinator.sync(
+            completion: { synchronizer in
+                initialBalance = try await synchronizer.getShieldedBalance()
+                initialVerifiedBalance = try await synchronizer.getShieldedVerifiedBalance()
+                firstSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [firstSyncExpectation], timeout: 5)
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
         try coordinator.resetBlocks(dataset: .predefined(dataset: .txIndexChangeAfter))
         
         try coordinator.applyStaged(blockheight: finalHeight)
+        sleep(1)
         
         let lastSyncExpectation = XCTestExpectation(description: "last sync expectation")
         
-        try coordinator.sync(completion: { _ in
-            lastSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                lastSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [lastSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(coordinator.synchronizer.initializer.getBalance(), initialBalance)
-        XCTAssertEqual(coordinator.synchronizer.initializer.getVerifiedBalance(), initialVerifiedBalance)
+        await fulfillment(of: [lastSyncExpectation], timeout: 5)
+
+        let expectedVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(expectedBalance, initialBalance)
+        XCTAssertEqual(expectedVerifiedBalance, initialVerifiedBalance)
     }
-    
-    /**
-    A Re Org occurs and changes the height of an outbound transaction
-    Pre-condition: Wallet has funds
-     
-    Steps:
-    1. create fake chain
-    1a. sync to latest height
-    2. send transaction to recipient address
-    3. getIncomingTransaction
-    4. stage transaction at sentTxHeight
-    5. applyHeight(sentTxHeight)
-    6. sync to latest height
-    6a. verify that there's a pending transaction with a mined height of sentTxHeight
-    7. stage 15  blocks from sentTxHeight
-    7. a stage sent tx to sentTxHeight + 2
-    8. applyHeight(sentTxHeight + 1) to cause a 1 block reorg
-    9. sync to latest height
-    10. verify that there's a pending transaction with -1 mined height
-    11. applyHeight(sentTxHeight + 2)
-    11a. sync to latest height
-    12. verify that there's a pending transaction with a mined height of sentTxHeight + 2
-    13. apply height(sentTxHeight + 15)
-    14. sync to latest height
-    15. verify that there's no pending transaction and that the tx is displayed on the sentTransactions collection
-     
-    */
-    func testReOrgChangesOutboundTxMinedHeight() throws {
-        hookToReOrgNotification()
+
+    /// A Re Org occurs and changes the height of an outbound transaction
+    /// Pre-condition: Wallet has funds
+    ///
+    /// Steps:
+    /// 1. create fake chain
+    /// 1a. sync to latest height
+    /// 2. send transaction to recipient address
+    /// 3. getIncomingTransaction
+    /// 4. stage transaction at sentTxHeight
+    /// 5. applyHeight(sentTxHeight)
+    /// 6. sync to latest height
+    /// 6a. verify that there's a pending transaction with a mined height of sentTxHeight
+    /// 7. stage 15  blocks from sentTxHeight
+    /// 7. a stage sent tx to sentTxHeight + 2
+    /// 8. applyHeight(sentTxHeight + 1) to cause a 1 block reorg
+    /// 9. sync to latest height
+    /// 10. verify that there's a pending transaction with -1 mined height
+    /// 11. applyHeight(sentTxHeight + 2)
+    /// 11a. sync to latest height
+    /// 12. verify that there's a pending transaction with a mined height of sentTxHeight + 2
+    /// 13. apply height(sentTxHeight + 15)
+    /// 14. sync to latest height
+    /// 15. verify that there's no pending transaction and that the tx is displayed on the sentTransactions collection
+    func testReOrgChangesOutboundTxMinedHeight() async throws {
+        await hookToReOrgNotification()
 
         /*
         1. create fake chain
@@ -689,43 +773,48 @@ class AdvancedReOrgTests: XCTestCase {
         /*
         1a. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [firstSyncExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    firstSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
         sleep(1)
-        let initialTotalBalance = coordinator.synchronizer.initializer.getBalance()
+        let initialTotalBalance: Zatoshi = try await coordinator.synchronizer.getShieldedBalance()
         
         let sendExpectation = XCTestExpectation(description: "send expectation")
-        var pendingEntity: PendingTransactionEntity?
+        var pendingEntity: ZcashTransaction.Overview?
         
         /*
         2. send transaction to recipient address
         */
-        coordinator.synchronizer.sendToAddress(
-            spendingKey: self.coordinator.spendingKeys!.first!,
-            zatoshi: 20000,
-            toAddress: self.testRecipientAddress,
-            memo: "this is a test",
-            from: 0,
-            resultBlock: { result in
-                switch result {
-                case .failure(let e):
-                    self.handleError(e)
-                case .success(let pendingTx):
-                    pendingEntity = pendingTx
-                }
-                sendExpectation.fulfill()
-            }
-        )
+        let recipient = try Recipient(Environment.testRecipientAddress, network: self.network.networkType)
+
+        do {
+            let pendingTx = try await coordinator.synchronizer.sendToAddress(
+                spendingKey: self.coordinator.spendingKey,
+                zatoshi: Zatoshi(20000),
+                toAddress: recipient,
+                memo: try Memo(string: "this is a test")
+            )
+            pendingEntity = pendingTx
+            sendExpectation.fulfill()
+        } catch {
+            await handleError(error)
+        }
         
-        wait(for: [sendExpectation], timeout: 11)
+        await fulfillment(of: [sendExpectation], timeout: 11)
         
         guard pendingEntity != nil else {
             XCTFail("no pending transaction after sending")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
 
@@ -734,7 +823,7 @@ class AdvancedReOrgTests: XCTestCase {
         */
         guard let incomingTx = try coordinator.getIncomingTransactions()?.first else {
             XCTFail("no incoming transaction")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
@@ -759,14 +848,22 @@ class AdvancedReOrgTests: XCTestCase {
         */
         let secondSyncExpectation = XCTestExpectation(description: "after send expectation")
         
-        try coordinator.sync(completion: { _ in
-            secondSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [secondSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(coordinator.synchronizer.pendingTransactions.count, 1)
-        guard let afterStagePendingTx = coordinator.synchronizer.pendingTransactions.first else {
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    secondSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [secondSyncExpectation], timeout: 5)
+
+        var pendingTransactionsCount = await coordinator.synchronizer.pendingTransactions.count
+        XCTAssertEqual(pendingTransactionsCount, 1)
+        guard let afterStagePendingTx = await coordinator.synchronizer.pendingTransactions.first else {
             return
         }
         
@@ -797,22 +894,29 @@ class AdvancedReOrgTests: XCTestCase {
         self.expectedReorgHeight = sentTxHeight + 1
         let afterReorgExpectation = XCTestExpectation(description: "after reorg sync")
         
-        try coordinator.sync(completion: { _ in
-            afterReorgExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [reorgExpectation, afterReorgExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    afterReorgExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [reorgExpectation, afterReorgExpectation], timeout: 5)
         
         /*
         10. verify that there's a pending transaction with -1 mined height
         */
-        guard let newPendingTx = coordinator.synchronizer.pendingTransactions.first else {
+        guard let newPendingTx = await coordinator.synchronizer.pendingTransactions.first else {
             XCTFail("No pending transaction")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
-        XCTAssertEqual(newPendingTx.minedHeight, BlockHeight.empty())
+        XCTAssertNil(newPendingTx.minedHeight)
         
         /*
         11. applyHeight(sentTxHeight + 2)
@@ -825,19 +929,27 @@ class AdvancedReOrgTests: XCTestCase {
         /*
         11a. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            yetAnotherExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [yetAnotherExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    yetAnotherExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [yetAnotherExpectation], timeout: 5)
         
         /*
         12. verify that there's a pending transaction with a mined height of sentTxHeight + 2
         */
-        XCTAssertEqual(coordinator.synchronizer.pendingTransactions.count, 1)
-        guard let newlyPendingTx = try coordinator.synchronizer.allPendingTransactions().first else {
+        pendingTransactionsCount = await coordinator.synchronizer.pendingTransactions.count
+        XCTAssertEqual(pendingTransactionsCount, 1)
+        guard let newlyPendingTx = try await coordinator.synchronizer.allPendingTransactions().first(where: { $0.isSentTransaction }) else {
             XCTFail("no pending transaction")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
@@ -855,54 +967,70 @@ class AdvancedReOrgTests: XCTestCase {
         /*
         14. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            thisIsTheLastExpectationIPromess.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [thisIsTheLastExpectationIPromess], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    thisIsTheLastExpectationIPromess.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [thisIsTheLastExpectationIPromess], timeout: 5)
         
         /*
         15. verify that there's no pending transaction and that the tx is displayed on the sentTransactions collection
         */
-        XCTAssertEqual(coordinator.synchronizer.pendingTransactions.count, 0)
+        let pendingTranscationsCount = await coordinator.synchronizer.pendingTransactions.count
+        XCTAssertEqual(pendingTranscationsCount, 0)
+
+        let sentTransactions = await coordinator.synchronizer.sentTransactions
+            .first(
+                where: { transaction in
+                    return transaction.rawID == newlyPendingTx.rawID
+                }
+            )
+
         XCTAssertNotNil(
-            coordinator.synchronizer.sentTransactions
-                .first(
-                    where: { transaction in
-                        guard let txId = transaction.rawTransactionId else { return false }
-                        return txId == newlyPendingTx.rawTransactionId
-                    }
-                ),
+            sentTransactions,
             "Sent Tx is not on sent transactions"
         )
-        
+
+        let expectedVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+
         XCTAssertEqual(
-            initialTotalBalance - Int64(newlyPendingTx.value) - Int64(1000),
-            coordinator.synchronizer.initializer.getBalance()
+            initialTotalBalance + newlyPendingTx.value, // Note: sent transactions have negative values
+            expectedBalance
         )
 
         XCTAssertEqual(
-            initialTotalBalance - Int64(newlyPendingTx.value) - Int64(1000),
-            coordinator.synchronizer.initializer.getVerifiedBalance()
+            initialTotalBalance + newlyPendingTx.value, // Note: sent transactions have negative values
+            expectedVerifiedBalance
         )
+
+        let txRecipients = await coordinator.synchronizer.getRecipients(for: newPendingTx)
+        XCTAssertEqual(txRecipients.count, 2)
+        XCTAssertNotNil(txRecipients.first(where: { $0 == .internalAccount(0) }))
+        XCTAssertNotNil(txRecipients.first(where: { $0 == .address(recipient) }))
     }
 
-    /**
-    Uses the zcash-hackworks data set.
+    /// Uses the zcash-hackworks data set.
 
-    A Re Org occurs at 663195, and sweeps an Inbound Tx that appears later on the chain.
-    Steps:
-    1. reset dlwd
-    2. load blocks from txHeightReOrgBefore
-    3. applyStaged(663195)
-    4. sync to latest height
-    5. get balances
-    6. load blocks from dataset txHeightReOrgBefore
-    7. apply stage 663200
-    8. sync to latest height
-    9. verify that the balance is equal to the one before the reorg
-    */
-    func testReOrgChangesInboundMinedHeight() throws {
+    /// A Re Org occurs at 663195, and sweeps an Inbound Tx that appears later on the chain.
+    /// Steps:
+    /// 1. reset dlwd
+    /// 2. load blocks from txHeightReOrgBefore
+    /// 3. applyStaged(663195)
+    /// 4. sync to latest height
+    /// 5. get balances
+    /// 6. load blocks from dataset txHeightReOrgBefore
+    /// 7. apply stage 663200
+    /// 8. sync to latest height
+    /// 9. verify that the balance is equal to the one before the reorg
+    func testReOrgChangesInboundMinedHeight() async throws {
         try coordinator.reset(saplingActivation: 663150, branchID: branchID, chainName: chainName)
         sleep(2)
         try coordinator.resetBlocks(dataset: .predefined(dataset: .txHeightReOrgBefore))
@@ -911,15 +1039,18 @@ class AdvancedReOrgTests: XCTestCase {
         sleep(2)
         let firstSyncExpectation = XCTestExpectation(description: "first sync")
         
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                firstSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [firstSyncExpectation], timeout: 5)
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
-        let initialBalance = coordinator.synchronizer.initializer.getBalance()
-        let initialVerifiedBalance = coordinator.synchronizer.initializer.getVerifiedBalance()
-        guard let initialTxHeight = try coordinator.synchronizer.allReceivedTransactions().first?.minedHeight else {
+        let initialBalance: Zatoshi = try await coordinator.synchronizer.getShieldedBalance()
+        let initialVerifiedBalance: Zatoshi = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        guard let initialTxHeight = try await coordinator.synchronizer.allReceivedTransactions().first?.minedHeight else {
             XCTFail("no incoming transaction found!")
             return
         }
@@ -933,33 +1064,38 @@ class AdvancedReOrgTests: XCTestCase {
         sleep(6)
         
         let afterReOrgExpectation = XCTestExpectation(description: "after reorg")
-        try coordinator.sync(completion: { _ in
-            afterReOrgExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                afterReOrgExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [afterReOrgExpectation], timeout: 5)
+        await fulfillment(of: [afterReOrgExpectation], timeout: 5)
         
-        guard let afterReOrgTxHeight = coordinator.synchronizer.receivedTransactions.first?.minedHeight else {
+        guard let afterReOrgTxHeight = await coordinator.synchronizer.receivedTransactions.first?.minedHeight else {
             XCTFail("no incoming transaction found after re org!")
             return
         }
-        XCTAssertEqual(initialVerifiedBalance, coordinator.synchronizer.initializer.getVerifiedBalance())
-        XCTAssertEqual(initialBalance, coordinator.synchronizer.initializer.getBalance())
+
+        let expectedVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(initialVerifiedBalance, expectedVerifiedBalance)
+        XCTAssertEqual(initialBalance, expectedBalance)
         XCTAssert(afterReOrgTxHeight > initialTxHeight)
     }
 
-    /**
-    Re Org removes incoming transaction and is never mined
-    Steps:
-    1. sync prior to incomingTxHeight - 1 to get balances there
-    2. sync to latest height
-    3. cause reorg
-    4. sync to latest height
-    5. verify that reorg Happened at reorgHeight
-    6. verify that balances match initial balances
-    */
-    func testReOrgRemovesIncomingTxForever() throws {
-        hookToReOrgNotification()
+    /// Re Org removes incoming transaction and is never mined
+    /// Steps:
+    /// 1. sync prior to incomingTxHeight - 1 to get balances there
+    /// 2. sync to latest height
+    /// 3. cause reorg
+    /// 4. sync to latest height
+    /// 5. verify that reorg Happened at reorgHeight
+    /// 6. verify that balances match initial balances
+    // FIXME [#644]: Test works with lightwalletd v0.4.13 but is broken when using newer lightwalletd. More info is in #644.
+    func testReOrgRemovesIncomingTxForever() async throws {
+        await hookToReOrgNotification()
         try coordinator.reset(saplingActivation: 663150, branchID: branchID, chainName: chainName)
         
         try coordinator.resetBlocks(dataset: .predefined(dataset: .txReOrgRemovesInboundTxBefore))
@@ -976,27 +1112,34 @@ class AdvancedReOrgTests: XCTestCase {
         /**
         1. sync prior to incomingTxHeight - 1 to get balances there
         */
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                firstSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [firstSyncExpectation], timeout: 5)
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
-        let initialTotalBalance = coordinator.synchronizer.initializer.getBalance()
-        let initialVerifiedBalance = coordinator.synchronizer.initializer.getVerifiedBalance()
+        let initialTotalBalance: Zatoshi = try await coordinator.synchronizer.getShieldedBalance()
+        let initialVerifiedBalance: Zatoshi = try await coordinator.synchronizer.getShieldedVerifiedBalance()
         
-        try coordinator.applyStaged(blockheight: reorgHeight)
+        try coordinator.applyStaged(blockheight: reorgHeight - 1)
+        sleep(1)
         
         let secondSyncExpectation = XCTestExpectation(description: "second sync expectation")
         
         /**
         2. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            secondSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                secondSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [secondSyncExpectation], timeout: 10)
+        await fulfillment(of: [secondSyncExpectation], timeout: 10)
         
         /**
         3. cause reorg
@@ -1007,33 +1150,36 @@ class AdvancedReOrgTests: XCTestCase {
         sleep(2)
         
         let afterReorgSyncExpectation = XCTestExpectation(description: "after reorg expectation")
-        try coordinator.sync(completion: { _ in
-            afterReorgSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { _ in
+                afterReorgSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
         
-        wait(for: [afterReorgSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(initialVerifiedBalance, coordinator.synchronizer.initializer.getVerifiedBalance())
-        XCTAssertEqual(initialTotalBalance, coordinator.synchronizer.initializer.getBalance())
+        await fulfillment(of: [afterReorgSyncExpectation], timeout: 5)
+
+        let expectedVerifiedBalance = try await coordinator.synchronizer.getShieldedVerifiedBalance()
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(initialVerifiedBalance, expectedVerifiedBalance)
+        XCTAssertEqual(initialTotalBalance, expectedBalance)
     }
     
-    /**
-    Transaction was included in a block, and then is not included in a block after a reorg, and expires.
-    Steps:
-    1. create fake chain
-    1a. sync to latest height
-    2. send transaction to recipient address
-    3. getIncomingTransaction
-    4. stage transaction at sentTxHeight
-    5. applyHeight(sentTxHeight)
-    6. sync to latest height
-    6a. verify that there's a pending transaction with a mined height of sentTxHeight
-    7. stage 15 blocks from sentTxHeigth to cause a reorg
-    8. sync to latest height
-    9. verify that there's an expired transaction as a pending transaction
-    */
-    func testReOrgRemovesOutboundTxAndIsNeverMined() throws {
-        hookToReOrgNotification()
+    /// Transaction was included in a block, and then is not included in a block after a reorg, and expires.
+    /// Steps:
+    /// 1. create fake chain
+    /// 1a. sync to latest height
+    /// 2. send transaction to recipient address
+    /// 3. getIncomingTransaction
+    /// 4. stage transaction at sentTxHeight
+    /// 5. applyHeight(sentTxHeight)
+    /// 6. sync to latest height
+    /// 6a. verify that there's a pending transaction with a mined height of sentTxHeight
+    /// 7. stage 15 blocks from sentTxHeigth to cause a reorg
+    /// 8. sync to latest height
+    /// 9. verify that there's an expired transaction as a pending transaction
+    func testReOrgRemovesOutboundTxAndIsNeverMined() async throws {
+        await hookToReOrgNotification()
         
         /*
         1. create fake chain
@@ -1049,43 +1195,46 @@ class AdvancedReOrgTests: XCTestCase {
         /*
         1a. sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [firstSyncExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    firstSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [firstSyncExpectation], timeout: 10)
         
         sleep(1)
-        let initialTotalBalance = coordinator.synchronizer.initializer.getBalance()
+        let initialTotalBalance: Zatoshi = try await coordinator.synchronizer.getShieldedBalance()
         
         let sendExpectation = XCTestExpectation(description: "send expectation")
-        var pendingEntity: PendingTransactionEntity?
+        var pendingEntity: ZcashTransaction.Overview?
         
         /*
         2. send transaction to recipient address
         */
-        coordinator.synchronizer.sendToAddress(
-            spendingKey: self.coordinator.spendingKeys!.first!,
-            zatoshi: 20000,
-            toAddress: self.testRecipientAddress,
-            memo: "this is a test",
-            from: 0,
-            resultBlock: { result in
-                switch result {
-                case .failure(let e):
-                    self.handleError(e)
-                case .success(let pendingTx):
-                    pendingEntity = pendingTx
-                }
-                sendExpectation.fulfill()
-            }
+        do {
+            let pendingTx = try await coordinator.synchronizer.sendToAddress(
+                spendingKey: self.coordinator.spendingKey,
+                zatoshi: Zatoshi(20000),
+                toAddress: try Recipient(Environment.testRecipientAddress, network: self.network.networkType),
+                memo: try! Memo(string: "this is a test")
         )
+            pendingEntity = pendingTx
+            sendExpectation.fulfill()
+        } catch {
+            await handleError(error)
+        }
         
-        wait(for: [sendExpectation], timeout: 11)
+        await fulfillment(of: [sendExpectation], timeout: 11)
         
         guard pendingEntity != nil else {
             XCTFail("no pending transaction after sending")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
 
@@ -1094,7 +1243,7 @@ class AdvancedReOrgTests: XCTestCase {
         */
         guard let incomingTx = try coordinator.getIncomingTransactions()?.first else {
             XCTFail("no incoming transaction")
-            try coordinator.stop()
+            try await coordinator.stop()
             return
         }
         
@@ -1113,17 +1262,24 @@ class AdvancedReOrgTests: XCTestCase {
         try coordinator.applyStaged(blockheight: sentTxHeight)
         
         sleep(2)
-        
+
         /*
         6. sync to latest height
         */
         let secondSyncExpectation = XCTestExpectation(description: "after send expectation")
         
-        try coordinator.sync(completion: { _ in
-            secondSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [secondSyncExpectation], timeout: 5)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    secondSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [secondSyncExpectation], timeout: 5)
         let extraBlocks = 25
         try coordinator.stageBlockCreate(height: sentTxHeight, count: extraBlocks, nonce: 5)
         
@@ -1132,18 +1288,25 @@ class AdvancedReOrgTests: XCTestCase {
         sleep(2)
         let reorgSyncExpectation = XCTestExpectation(description: "reorg sync expectation")
         
-        try coordinator.sync(completion: { _ in
-            reorgSyncExpectation.fulfill()
-        }, error: self.handleError)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    reorgSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [reorgExpectation, reorgSyncExpectation], timeout: 5)
         
-        wait(for: [reorgExpectation, reorgSyncExpectation], timeout: 5)
-        
-        guard let pendingTx = coordinator.synchronizer.pendingTransactions.first else {
+        guard let pendingTx = await coordinator.synchronizer.pendingTransactions.first else {
             XCTFail("no pending transaction after reorg sync")
             return
         }
         
-        XCTAssertFalse(pendingTx.isMined)
+        XCTAssertNil(pendingTx.minedHeight)
         
         LoggerProxy.info("applyStaged(blockheight: \(sentTxHeight + extraBlocks - 1))")
         try coordinator.applyStaged(blockheight: sentTxHeight + extraBlocks - 1)
@@ -1152,17 +1315,25 @@ class AdvancedReOrgTests: XCTestCase {
         
         let lastSyncExpectation = XCTestExpectation(description: "last sync expectation")
         
-        try coordinator.sync(completion: { _ in
-            lastSyncExpectation.fulfill()
-        }, error: self.handleError)
-        
-        wait(for: [lastSyncExpectation], timeout: 5)
-        
-        XCTAssertEqual(coordinator.synchronizer.initializer.getBalance(), initialTotalBalance)
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    lastSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [lastSyncExpectation], timeout: 5)
+
+        let expectedBalance = try await coordinator.synchronizer.getShieldedBalance()
+        XCTAssertEqual(expectedBalance, initialTotalBalance)
     }
     
-    func testLongSync() throws {
-        hookToReOrgNotification()
+    func testLongSync() async throws {
+        await hookToReOrgNotification()
         
         /*
         1. create fake chain
@@ -1173,32 +1344,32 @@ class AdvancedReOrgTests: XCTestCase {
         
         try coordinator.applyStaged(blockheight: birthday + fullSyncLength)
         
-        sleep(10)
+        sleep(20)
         
         let firstSyncExpectation = XCTestExpectation(description: "first sync")
 
         /*
         sync to latest height
         */
-        try coordinator.sync(completion: { _ in
-            firstSyncExpectation.fulfill()
-        }, error: { error in
-            _ = try? self.coordinator.stop()
-            firstSyncExpectation.fulfill()
-            guard let testError = error else {
-                XCTFail("failed with nil error")
-                return
-            }
-            XCTFail("Failed with error: \(testError)")
-        })
+        do {
+            try await coordinator.sync(
+                completion: { _ in
+                    firstSyncExpectation.fulfill()
+                },
+                error: self.handleError
+            )
+        } catch {
+            await handleError(error)
+        }
+
+        await fulfillment(of: [firstSyncExpectation], timeout: 600)
         
-        wait(for: [firstSyncExpectation], timeout: 500)
-        
-        XCTAssertEqual(try coordinator.synchronizer.latestDownloadedHeight(), birthday + fullSyncLength)
+        let latestScannedHeight = await coordinator.synchronizer.latestBlocksDataProvider.latestScannedHeight
+        XCTAssertEqual(latestScannedHeight, birthday + fullSyncLength)
     }
     
-    func handleError(_ error: Error?) {
-        _ = try? coordinator.stop()
+    func handleError(_ error: Error?) async {
+        _ = try? await coordinator.stop()
         guard let testError = error else {
             XCTFail("failed with nil error")
             return
@@ -1206,7 +1377,14 @@ class AdvancedReOrgTests: XCTestCase {
         XCTFail("Failed with error: \(testError)")
     }
     
-    func hookToReOrgNotification() {
-        NotificationCenter.default.addObserver(self, selector: #selector(handleReorg(_:)), name: .blockProcessorHandledReOrg, object: nil)
+    func hookToReOrgNotification() async {
+        let eventClosure: CompactBlockProcessor.EventClosure = { [weak self] event in
+            switch event {
+            case .handledReorg: self?.handleReorg(event: event)
+            default: break
+            }
+        }
+
+        await coordinator.synchronizer.blockProcessor.updateEventClosure(identifier: "tests", closure: eventClosure)
     }
 }

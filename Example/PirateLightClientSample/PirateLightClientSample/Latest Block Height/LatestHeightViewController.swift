@@ -11,8 +11,8 @@ import PirateLightClientKit
 
 class LatestHeightViewController: UIViewController {
     @IBOutlet weak var blockHeightLabel: UILabel!
-    
-    var service: LightWalletService = LightWalletGRPCService(endpoint: DemoAppConfig.endpoint)
+
+    let synchronizer = AppDelegate.shared.sharedSynchronizer
     var model: BlockHeight? {
         didSet {
             if viewIfLoaded != nil {
@@ -28,18 +28,13 @@ class LatestHeightViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-
-        service.latestBlockHeight { result in
-            switch result {
-            case .success(let height):
-                DispatchQueue.main.async { [weak self] in
-                    self?.model = height
-                }
-
-            case .failure(let error):
-                DispatchQueue.main.async { [weak self] in
-                    self?.fail(error)
-                }
+        
+        /// Note: It's safe to modify model or call fail() because all methods of a UIViewController are MainActor methods by default.
+        Task {
+            do {
+                model = try await synchronizer.latestHeight()
+            } catch {
+                fail(error)
             }
         }
     }
@@ -52,7 +47,7 @@ class LatestHeightViewController: UIViewController {
         blockHeightLabel.text = String(model)
     }
     
-    func fail(_ error: LightWalletServiceError) {
+    func fail(_ error: Error) {
         self.blockHeightLabel.text = "Error"
         
         let alert = UIAlertController(title: "Error", message: String(describing: error), preferredStyle: .alert)

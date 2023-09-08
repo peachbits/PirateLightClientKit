@@ -6,66 +6,33 @@
 //
 
 import Foundation
+import SQLite
 
 protocol AccountEntity {
-    var account: Int { get set }
-    var extfvk: String { get set }
-    var address: String { get set }
-    var transparentAddress: String { get set }
+    var account: Int { get }
+    var ufvk: String { get }
 }
 
-struct Account: AccountEntity, Encodable, Decodable {
+struct DbAccount: AccountEntity, Encodable, Decodable {
     enum CodingKeys: String, CodingKey {
         case account
-        case extfvk
-        case address
-        case transparentAddress = "transparent_address"
+        case ufvk
     }
     
-    var account: Int
-    
-    var extfvk: String
-    
-    var address: String
-    
-    var transparentAddress: String
+    let account: Int
+    let ufvk: String
 }
 
-extension Account: UnifiedAddress {
-    var tAddress: TransparentAddress {
-        get {
-            transparentAddress
-        }
-        set {
-            transparentAddress = newValue
-        }
-    }
-    
-    var zAddress: SaplingShieldedAddress {
-        get {
-            address
-        }
-        // swiftlint:disable unused_setter_value
-        set {
-            address = transparentAddress
-        }
-    }
-}
-
-extension Account: Hashable {
+extension DbAccount: Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(account)
-        hasher.combine(extfvk)
-        hasher.combine(address)
-        hasher.combine(transparentAddress)
+        hasher.combine(ufvk)
     }
     
     static func == (lhs: Self, rhs: Self) -> Bool {
         guard
             lhs.account == rhs.account,
-            lhs.extfvk == rhs.extfvk,
-            lhs.address == rhs.address,
-            lhs.transparentAddress == rhs.transparentAddress
+            lhs.ufvk == rhs.ufvk
         else { return false }
         
         return true
@@ -75,60 +42,97 @@ extension Account: Hashable {
 protocol AccountRepository {
     func getAll() throws -> [AccountEntity]
     func findBy(account: Int) throws -> AccountEntity?
-    func findBy(address: String) throws -> AccountEntity?
     func update(_ account: AccountEntity) throws
 }
-
-import SQLite
 
 class AccountSQDAO: AccountRepository {
     enum TableColums {
         static let account = Expression<Int>("account")
-        static let extfvk = Expression<String>("extfvk")
-        static let address = Expression<String>("address")
-        static let transparentAddress = Expression<String>("transparent_address")
+        static let extfvk = Expression<String>("ufvk")
     }
 
     let table = Table("accounts")
 
-    var dbProvider: ConnectionProvider
+    let dbProvider: ConnectionProvider
+    let logger: Logger
     
-    init (dbProvider: ConnectionProvider) {
+    init(dbProvider: ConnectionProvider, logger: Logger) {
         self.dbProvider = dbProvider
+        self.logger = logger
     }
-    
+
+    /// - Throws:
+    ///     - `accountDAOGetAllCantDecode` if account data fetched from the db can't be decoded to the `Account` object.
+    ///     - `accountDAOGetAll` if sqlite query fetching account data failed.
     func getAll() throws -> [AccountEntity] {
-        let allAccounts: [Account] = try dbProvider.connection().prepare(table).map({ row in
-            try row.decode()
-        })
-        
-        return allAccounts
+        do {
+            return try dbProvider.connection()
+                .prepare(table)
+                .map { row -> DbAccount in
+                    do {
+                        return try row.decode()
+                    } catch {
+                        throw ZcashError.accountDAOGetAllCantDecode(error)
+                    }
+                }
+        } catch {
+            if let error = error as? ZcashError {
+                throw error
+            } else {
+                throw ZcashError.accountDAOGetAll(error)
+            }
+        }
     }
-    
+
+    /// - Throws:
+    ///     - `accountDAOFindByCantDecode` if account data fetched from the db can't be decoded to the `Account` object.
+    ///     - `accountDAOFindBy` if sqlite query fetching account data failed.
     func findBy(account: Int) throws -> AccountEntity? {
         let query = table.filter(TableColums.account == account).limit(1)
-        return try dbProvider.connection().prepare(query).map({ try $0.decode() as Account }).first
-    }
-    
-    func findBy(address: String) throws -> AccountEntity? {
-        let query = table.filter(TableColums.address == address).limit(1)
-        return try dbProvider.connection().prepare(query).map({ try $0.decode() as Account }).first
-    }
-    
-    func update(_ account: AccountEntity) throws {
-        guard let acc = account as? Account else {
-            throw StorageError.updateFailed
+        do {
+            return try dbProvider.connection()
+                .prepare(query)
+                .map {
+                    do {
+                        return try $0.decode() as DbAccount
+                    } catch {
+                        throw ZcashError.accountDAOFindByCantDecode(error)
+                    }
+                }
+                .first
+        } catch {
+            if let error = error as? ZcashError {
+                throw error
+            } else {
+                throw ZcashError.accountDAOFindBy(error)
+            }
         }
-        let updatedRows = try dbProvider.connection().run(table.filter(TableColums.account == acc.account).update(acc))
+    }
+
+    /// - Throws:
+    ///     - `accountDAOUpdate` if sqlite query updating account failed.
+    ///     - `accountDAOUpdatedZeroRows` if sqlite query updating account pass but it affects 0 rows.
+    func update(_ account: AccountEntity) throws {
+        guard let acc = account as? DbAccount else {
+            throw ZcashError.accountDAOUpdateInvalidAccount
+        }
+
+        let updatedRows: Int
+        do {
+            updatedRows = try dbProvider.connection().run(table.filter(TableColums.account == acc.account).update(acc))
+        } catch {
+            throw ZcashError.accountDAOUpdate(error)
+        }
+
         if updatedRows == 0 {
-            LoggerProxy.error("attempted to update pending transactions but no rows were updated")
-            throw StorageError.updateFailed
+            logger.error("attempted to update pending transactions but no rows were updated")
+            throw ZcashError.accountDAOUpdatedZeroRows
         }
     }
 }
 
 class CachingAccountDao: AccountRepository {
-    var dao: AccountRepository
+    let dao: AccountRepository
     lazy var cache: [Int: AccountEntity] = {
         var accountCache: [Int: AccountEntity] = [:]
         guard let all = try? dao.getAll() else {
@@ -170,32 +174,26 @@ class CachingAccountDao: AccountRepository {
 
         return acc
     }
-    
-    func findBy(address: String) throws -> AccountEntity? {
-        if !cache.isEmpty, let account = cache.values.first(where: { $0.address == address }) {
-            return account
-        }
         
-        guard let account = try dao.findBy(address: address) else {
-            return nil
-        }
-
-        cache[account.account] = account
-        
-        return account
-    }
-    
     func update(_ account: AccountEntity) throws {
         try dao.update(account)
     }
 }
 
 enum AccountRepositoryBuilder {
-    static func build(dataDbURL: URL, readOnly: Bool = false, caching: Bool = false) -> AccountRepository {
+    static func build(dataDbURL: URL, readOnly: Bool = false, caching: Bool = false, logger: Logger) -> AccountRepository {
         if caching {
-            return CachingAccountDao(dao: AccountSQDAO(dbProvider: SimpleConnectionProvider(path: dataDbURL.path, readonly: readOnly)))
+            return CachingAccountDao(
+                dao: AccountSQDAO(
+                    dbProvider: SimpleConnectionProvider(path: dataDbURL.path, readonly: readOnly),
+                    logger: logger
+                )
+            )
         } else {
-            return AccountSQDAO(dbProvider: SimpleConnectionProvider(path: dataDbURL.path, readonly: readOnly))
+            return AccountSQDAO(
+                dbProvider: SimpleConnectionProvider(path: dataDbURL.path, readonly: readOnly),
+                logger: logger
+            )
         }
     }
 }

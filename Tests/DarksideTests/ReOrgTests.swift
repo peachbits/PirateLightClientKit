@@ -5,6 +5,7 @@
 //  Created by Francisco Gindre on 3/23/20.
 //
 
+import Combine
 import XCTest
 @testable import TestUtils
 @testable import PirateLightClientKit
@@ -21,13 +22,7 @@ basic reorg test.  Scan, get a reorg and then reach latest height.
 * observe that the prev hash of that block does not match the hash that we have for 663250
 * rewind 10 blocks and request blocks 663241 to 663251
 */
-// swiftlint:disable implicitly_unwrapped_optional print_function_usage function_parameter_count
-class ReOrgTests: XCTestCase {
-    // TODO: Parameterize this from environment?
-    // swiftlint:disable:next line_length
-    let seedPhrase = "still champion voice habit trend flight survey between bitter process artefact blind carbon truly provide dizzy crush flush breeze blouse charge solid fish spread"
-    // TODO: Parameterize this from environment
-    let testRecipientAddress = "zs17mg40levjezevuhdp5pqrd52zere7r7vrjgdwn5sj4xsqtm20euwahv9anxmwr3y3kmwuz8k55a"
+class ReOrgTests: ZcashTestCase {
     let sendAmount: Int64 = 1000
     let defaultLatestHeight: BlockHeight = 663175
     let network = DarksideWalletDNetwork()
@@ -36,7 +31,7 @@ class ReOrgTests: XCTestCase {
     let mockLatestHeight = BlockHeight(663250)
     let targetLatestHeight = BlockHeight(663251)
     let walletBirthday = BlockHeight(663150)
-
+    
     var birthday: BlockHeight = 663150
     var reorgExpectation = XCTestExpectation(description: "reorg")
     var coordinator: TestCoordinator!
@@ -44,39 +39,47 @@ class ReOrgTests: XCTestCase {
     var sentTransactionExpectation = XCTestExpectation(description: "sent")
     var expectedReorgHeight: BlockHeight = 665188
     var expectedRewindHeight: BlockHeight = 665188
+    var cancellables: [AnyCancellable] = []
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleReOrgNotification(_:)),
-            name: Notification.Name.blockProcessorHandledReOrg,
-            object: nil
+    override func setUp() async throws {
+        try await super.setUp()
+
+        self.coordinator = try await TestCoordinator(
+            container: mockContainer,
+            walletBirthday: self.birthday,
+            network: self.network
         )
-        coordinator = try TestCoordinator(
-            seed: seedPhrase,
-            walletBirthday: birthday,
-            channelProvider: ChannelProvider(),
-            network: network
-        )
-        try coordinator.reset(saplingActivation: birthday, branchID: branchID, chainName: chainName)
-        try coordinator.resetBlocks(dataset: .default)
-    }
 
-    override func tearDownWithError() throws {
-        try super.tearDownWithError()
-        try? FileManager.default.removeItem(at: coordinator.databases.cacheDB)
-        try? FileManager.default.removeItem(at: coordinator.databases.dataDB)
-        try? FileManager.default.removeItem(at: coordinator.databases.pendingDB)
-    }
+        try self.coordinator.reset(saplingActivation: self.birthday, branchID: self.branchID, chainName: self.chainName)
 
-    @objc func handleReOrgNotification(_ notification: Notification) {
-        reorgExpectation.fulfill()
-        guard let reorgHeight = notification.userInfo?[CompactBlockProcessorNotificationKey.reorgHeight] as? BlockHeight,
-            let rewindHeight = notification.userInfo?[CompactBlockProcessorNotificationKey.rewindHeight] as? BlockHeight else {
-                XCTFail("malformed reorg userInfo")
-                return
+        try self.coordinator.resetBlocks(dataset: .default)
+
+        let eventClosure: CompactBlockProcessor.EventClosure = { [weak self] event in
+            switch event {
+            case .handledReorg: self?.handleReOrgNotification(event: event)
+            default: break
+            }
         }
+
+        await self.coordinator.synchronizer.blockProcessor.updateEventClosure(identifier: "tests", closure: eventClosure)
+    }
+
+    override func tearDown() async throws {
+        try await super.tearDown()
+        let coordinator = self.coordinator!
+        self.coordinator = nil
+        cancellables = []
+
+        try await coordinator.stop()
+        try? FileManager.default.removeItem(at: coordinator.databases.fsCacheDbRoot)
+        try? FileManager.default.removeItem(at: coordinator.databases.dataDB)
+    }
+
+    func handleReOrgNotification(event: CompactBlockProcessor.Event) {
+        reorgExpectation.fulfill()
+
+        guard case let .handledReorg(reorgHeight, rewindHeight) = event else { return XCTFail("malformed reorg userInfo") }
+
         print("reorgHeight: \(reorgHeight)")
         print("rewindHeight: \(rewindHeight)")
         
@@ -84,13 +87,13 @@ class ReOrgTests: XCTestCase {
         XCTAssertNoThrow(rewindHeight > 0)
     }
     
-    func testBasicReOrg() throws {
+    func testBasicReOrg() async throws {
         let mockLatestHeight = BlockHeight(663200)
         let targetLatestHeight = BlockHeight(663202)
         let reOrgHeight = BlockHeight(663195)
-        let walletBirthday = WalletBirthday.birthday(with: 663150, network: network).height
+        let walletBirthday = Checkpoint.birthday(with: 663150, network: network).height
         
-        try basicReOrgTest(
+        try await basicReOrgTest(
             baseDataset: .beforeReOrg,
             reorgDataset: .afterSmallReorg,
             firstLatestHeight: mockLatestHeight,
@@ -100,13 +103,13 @@ class ReOrgTests: XCTestCase {
         )
     }
     
-    func testTenPlusBlockReOrg() throws {
+    func testTenPlusBlockReOrg() async throws {
         let mockLatestHeight = BlockHeight(663200)
         let targetLatestHeight = BlockHeight(663250)
         let reOrgHeight = BlockHeight(663180)
-        let walletBirthday = WalletBirthday.birthday(with: BlockHeight(663150), network: network).height
+        let walletBirthday = Checkpoint.birthday(with: BlockHeight(663150), network: network).height
         
-        try basicReOrgTest(
+        try await basicReOrgTest(
             baseDataset: .beforeReOrg,
             reorgDataset: .afterLargeReorg,
             firstLatestHeight: mockLatestHeight,
@@ -123,11 +126,12 @@ class ReOrgTests: XCTestCase {
         reorgHeight: BlockHeight,
         walletBirthday: BlockHeight,
         targetHeight: BlockHeight
-    ) throws {
+    ) async throws {
         do {
             try coordinator.reset(saplingActivation: birthday, branchID: branchID, chainName: chainName)
             try coordinator.resetBlocks(dataset: .predefined(dataset: .beforeReOrg))
             try coordinator.applyStaged(blockheight: firstLatestHeight)
+            sleep(1)
         } catch {
             XCTFail("Error: \(error)")
             return
@@ -139,12 +143,15 @@ class ReOrgTests: XCTestCase {
         download and sync blocks from walletBirthday to firstLatestHeight
         */
         var synchronizer: SDKSynchronizer?
-        try coordinator.sync(completion: { synchro in
-            synchronizer = synchro
-            firstSyncExpectation.fulfill()
-        }, error: self.handleError)
+        try await coordinator.sync(
+            completion: { synchro in
+                synchronizer = synchro
+                firstSyncExpectation.fulfill()
+            },
+            error: self.handleError
+        )
        
-        wait(for: [firstSyncExpectation], timeout: 5)
+        await fulfillment(of: [firstSyncExpectation], timeout: 5)
         
         guard let syncedSynchronizer = synchronizer else {
             XCTFail("nil synchronizer")
@@ -155,8 +162,12 @@ class ReOrgTests: XCTestCase {
         verify that mock height has been reached
         */
         var latestDownloadedHeight = BlockHeight(0)
-        XCTAssertNoThrow(try { latestDownloadedHeight = try syncedSynchronizer.initializer.downloader.latestBlockHeight() }())
-        XCTAssertTrue(latestDownloadedHeight > 0)
+        do {
+            latestDownloadedHeight = try await syncedSynchronizer.initializer.blockDownloaderService.latestBlockHeight()
+            XCTAssertTrue(latestDownloadedHeight > 0)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
         
         /**
         trigger reorg!
@@ -173,7 +184,7 @@ class ReOrgTests: XCTestCase {
         let secondSyncExpectation = XCTestExpectation(description: "second sync")
         
         sleep(2)
-        try coordinator.sync(
+        try await coordinator.sync(
             completion: { _ in
                 secondSyncExpectation.fulfill()
             },
@@ -182,22 +193,15 @@ class ReOrgTests: XCTestCase {
         
         // now reorg should happen and reorg notifications and idle notification should be triggered
         
-        wait(for: [reorgExpectation, secondSyncExpectation], timeout: 5)
+        await fulfillment(of: [reorgExpectation, secondSyncExpectation], timeout: 5)
         
         // now everything should be fine. latest block should be targetHeight
-        
-        XCTAssertNoThrow(try { latestDownloadedHeight = try syncedSynchronizer.initializer.downloader.latestBlockHeight() }())
-        XCTAssertEqual(latestDownloadedHeight, targetHeight)
-    }
-    
-    @objc func processorHandledReorg(_ notification: Notification) {
-        XCTAssertNotNil(notification.userInfo)
-        if let reorg = notification.userInfo?[CompactBlockProcessorNotificationKey.reorgHeight] as? BlockHeight,
-            let rewind = notification.userInfo?[CompactBlockProcessorNotificationKey.rewindHeight] as? BlockHeight {
-            XCTAssertTrue( rewind <= reorg )
-            reorgExpectation.fulfill()
-        } else {
-            XCTFail("CompactBlockProcessor reorg notification is malformed")
+
+        do {
+            latestDownloadedHeight = try await syncedSynchronizer.initializer.blockDownloaderService.latestBlockHeight()
+            XCTAssertEqual(latestDownloadedHeight, targetHeight)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
         }
     }
     
