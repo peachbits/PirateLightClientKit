@@ -18,11 +18,11 @@ enum DemoAppConfig {
         let seed: [UInt8]
     }
 
-    static let host = PirateSDK.isMainnet ? "lightwalletd.electriccoin.co" : "lightwalletd.testnet.electriccoin.co"
-    static let port: Int = 9067
-    static let defaultBirthdayHeight: BlockHeight = PirateSDK.isMainnet ? 935000 : 1386000
+    static let host = PirateSDK.isMainnet ? "lightd1.pirate.black" : "lightd1.pirate.black"
+    static let port: Int = 443
+    static let defaultBirthdayHeight: BlockHeight = PirateSDK.isMainnet ? 800000 : 800000
     static let defaultSeed = try! Mnemonic.deterministicSeedBytes(from: """
-    live combine flight accident slow soda mind bright absent bid hen shy decade biology amazing mix enlist ensure biology rhythm snap duty soap armor
+    view yellow sponsor daring tiny exercise method connect neutral genuine piano fresh virtual loyal entry bird nerve cliff axis image toe sausage duck elephant
     """)
 
     static let otherSynchronizers: [SynchronizerInitData] = [

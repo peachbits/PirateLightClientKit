@@ -1,9 +1,9 @@
-# Zcash iOS Framework
+# Pirate iOS Framework
 
 [![Build Status](https://travis-ci.org/piratenetwork/PirateLightClientKit.svg?branch=master)](https://travis-ci.org/piratenetwork/PirateLightClientKit)
 
 
-A Zcash Lightweight Client SDK for iOS
+A Pirate Lightweight Client SDK for iOS
 This is an alpha build and is currently under active development. Please be advised of the following:
 
 - This code currently is not audited by an external security auditor, use it at your own risk
@@ -20,7 +20,7 @@ This is an alpha build and is currently under active development. Please be advi
 
 ## Swift Package Manager
 
-Add a package with the source "https://github.com/zcash/PirateLightClientKit.git" and from version `0.14.0-beta` onwards in either Xcode's GUI or in your `Package.swift` file.
+Add a package with the source "https://github.com/piratenetwork/PirateLightClientKit.git" and from version `0.14.0-beta` onwards in either Xcode's GUI or in your `Package.swift` file.
 
 ### Beta version support for Xcode projects
 

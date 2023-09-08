@@ -16,5 +16,5 @@ extension Checkpoint {
         orchardTree: nil
     )
     
-    static let testnetCheckpointDirectory = Bundle.module.bundleURL.appendingPathComponent("checkpoints/testnet/")
+    static let testnetCheckpointDirectory = Bundle.module.bundleURL.appendingPathComponent("piratesaplingtree-checkpoints/testnet/")
 }

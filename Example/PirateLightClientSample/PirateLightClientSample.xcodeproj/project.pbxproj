@@ -398,7 +398,7 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1320;
 				LastUpgradeCheck = 1250;
-				ORGANIZATIONNAME = "Electric Coin Company";
+				ORGANIZATIONNAME = "PirateNetwork";
 				TargetAttributes = {
 					0D907F112322CC5900D641FE = {
 						CreatedOnToolsVersion = 10.2.1;
@@ -729,7 +729,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
+				PRODUCT_BUNDLE_IDENTIFIER = "piratenetwork.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -751,7 +751,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
+				PRODUCT_BUNDLE_IDENTIFIER = "piratenetwork.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -814,7 +814,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
+				PRODUCT_BUNDLE_IDENTIFIER = "piratenetwork.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -837,7 +837,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "co.electriccoin.PirateLightClientSample-Testnet";
+				PRODUCT_BUNDLE_IDENTIFIER = "piratenetwork.PirateLightClientSample-Testnet";
 				PRODUCT_MODULE_NAME = PirateLightClientSample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

@@ -63,7 +63,7 @@ class SynchronizerTests: XCTestCase {
         )
         let ufvk = try derivationTool.deriveUnifiedFullViewingKey(from: spendingKey)
         let network = PirateNetworkBuilder.network(for: .mainnet)
-        let endpoint = LightWalletEndpoint(address: "lightwalletd.electriccoin.co", port: 9067, secure: true)
+        let endpoint = LightWalletEndpoint(address: "lightd1.pirate.black", port: 443, secure: true)
 
         var synchronizer: SDKSynchronizer?
         for _ in 1...5 {

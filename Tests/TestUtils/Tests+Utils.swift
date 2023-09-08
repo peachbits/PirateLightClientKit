@@ -45,11 +45,11 @@ enum LightWalletEndpointBuilder {
     }
 
     static var publicTestnet: LightWalletEndpoint {
-        LightWalletEndpoint(address: "testnet.lightwalletd.com", port: 9067, secure: true)
+        LightWalletEndpoint(address: "lightd1.pirate.black", port: 443, secure: true)
     }
 
     static var eccTestnet: LightWalletEndpoint {
-        LightWalletEndpoint(address: "lightwalletd.testnet.electriccoin.co", port: 9067, secure: true)
+        LightWalletEndpoint(address: "lightd1.pirate.black", port: 443, secure: true)
     }
 }
 

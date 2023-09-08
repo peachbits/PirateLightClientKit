@@ -89,7 +89,7 @@ class BlockScanTests: ZcashTestCase {
     func testSingleDownloadAndScan() async throws {
         _ = try await rustBackend.initDataDb(seed: nil)
 
-        let endpoint = LightWalletEndpoint(address: "lightwalletd.testnet.electriccoin.co", port: 9067)
+        let endpoint = LightWalletEndpoint(address: "lightd1.pirate.black", port: 443)
         let blockCount = 100
         let range = network.constants.saplingActivationHeight ... network.constants.saplingActivationHeight + blockCount
 

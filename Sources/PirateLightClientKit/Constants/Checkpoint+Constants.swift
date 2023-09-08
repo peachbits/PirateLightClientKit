@@ -98,17 +98,17 @@ extension BundleCheckpointURLProvider {
         switch networkType {
         case .mainnet:
             return Bundle.module.url(
-                forResource: "419200",
+                forResource: "152855",
                 withExtension: "json",
-                subdirectory: "checkpoints/mainnet/",
+                subdirectory: "piratesaplingtree-checkpoints/mainnet/",
                 localization: nil
             )?
             .deletingLastPathComponent() ?? Checkpoint.mainnetCheckpointDirectory
         case .testnet:
             return Bundle.module.url(
-                forResource: "280000",
+                forResource: "152855",
                 withExtension: "json",
-                subdirectory: "checkpoints/testnet/",
+                subdirectory: "piratesaplingtree-checkpoints/testnet/",
                 localization: nil
             )?
             .deletingLastPathComponent() ?? Checkpoint.testnetCheckpointDirectory

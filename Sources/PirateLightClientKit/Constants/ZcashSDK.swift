@@ -120,13 +120,13 @@ public enum PirateSDK {
     public static let defaultStaleTolerance: Int = 10
 
     /// Default Name for LibRustZcash data.db
-    public static let defaultDataDbName = "data.db"
+    public static let defaultDataDbName = "pirate_data.db"
 
     /// Default Name for Compact Block file system based db
-    public static let defaultFsCacheName = "fs_cache"
+    public static let defaultFsCacheName = "fs_cache_pirate"
 
     /// Default Name for Compact Block caches db
-    public static let defaultCacheDbName = "caches.db"
+    public static let defaultCacheDbName = "pirate_caches.db"
 
     /// The Url that is used by default in zcashd.
     /// We'll want to make this externally configurable, rather than baking it into the SDK but
@@ -171,26 +171,26 @@ public protocol NetworkConstants {
 
 public extension NetworkConstants {
     static func defaultFee(for height: BlockHeight = BlockHeight.max) -> Zatoshi {
-        guard height >= feeChangeHeight else { return Zatoshi(10_000) }
+        //guard height >= feeChangeHeight else { return Zatoshi(10_000) }
 
-        return Zatoshi(1_000)
+        return Zatoshi(10_000)
     }
 }
 
 public enum PirateSDKMainnetConstants: NetworkConstants {
     /// The height of the first sapling block. When it comes to shielded transactions, we do not need to consider any blocks
     /// prior to this height, at all.
-    public static let saplingActivationHeight: BlockHeight = 419_200
+    public static let saplingActivationHeight: BlockHeight = 152_855
 
     /// Default Name for LibRustZcash data.db
-    public static let defaultDataDbName = "data.db"
+    public static let defaultDataDbName = "pirate_data.db"
 
-    public static let defaultFsBlockDbRootName = "fs_cache"
+    public static let defaultFsBlockDbRootName = "fs_cache_pirate"
 
     /// Default Name for Compact Block caches db
-    public static let defaultCacheDbName = "caches.db"
+    public static let defaultCacheDbName = "pirate_caches.db"
 
-    public static let defaultDbNamePrefix = "ZcashSdk_mainnet_"
+    public static let defaultDbNamePrefix = "PirateSdk_mainnet_"
 
     public static let feeChangeHeight: BlockHeight = 1_077_550
 }
@@ -201,14 +201,14 @@ public enum PirateSDKTestnetConstants: NetworkConstants {
     public static let saplingActivationHeight: BlockHeight = 280_000
 
     /// Default Name for LibRustZcash data.db
-    public static let defaultDataDbName = "data.db"
+    public static let defaultDataDbName = "pirate_data.db"
 
     /// Default Name for Compact Block caches db
-    public static let defaultCacheDbName = "caches.db"
+    public static let defaultCacheDbName = "pirate_caches.db"
 
-    public static let defaultFsBlockDbRootName = "fs_cache"
+    public static let defaultFsBlockDbRootName = "fs_cache_pirate"
 
-    public static let defaultDbNamePrefix = "ZcashSdk_testnet_"
+    public static let defaultDbNamePrefix = "PirateSdk_testnet_"
 
     /// Estimated height where wallets are supposed to change the fee
     public static let feeChangeHeight: BlockHeight = 1_028_500
