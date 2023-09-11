@@ -118,7 +118,7 @@ is deleted. Now all migrations are in charge of the rust welding layer.
 which now incorporates `submit(encoded:)` functionality
 - `DatabaseMigrationManager` is remove since it's no longer needed all Database
 migrations shall be hanlded by the rust layer.
-- `ZcashSDK.defaultPendingDbName` along with any sibling members 
+- `PirateSDK.defaultPendingDbName` along with any sibling members 
 - `TransactionRepository` 
     - `findMemos(for receivedTransaction: ZcashTransaction.Received)`
     - `findMemos(for sentTransaction: ZcashTransaction.Sent)`
@@ -258,7 +258,7 @@ Int64 value.
 use the API retuning Zatoshi instead. If needed `zatoshi.amount` would return an
 Int64 value.
 
-ZcashSDK.NetworkConstants:
+PirateSDK.NetworkConstants:
 - `func defaultFee(for height: BlockHeight) -> Int64`
 use the API retuning Zatoshi instead. If needed `zatoshi.amount` would return an
 Int64 value.
