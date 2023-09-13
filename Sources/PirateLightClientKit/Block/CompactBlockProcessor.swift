@@ -772,18 +772,29 @@ actor CompactBlockProcessor {
         }
 
         var lastScannedHeight: BlockHeight = .zero
-        for i in 0..<loopsCount {
-            let processingRange = computeSingleLoopDownloadRange(fullRange: range, loopCounter: i, batchSize: batchSize)
+        var lowerBound = range.lowerBound
+        var upperBound = range.upperBound
 
-            logger.debug("Sync loop #\(i + 1) range: \(processingRange.lowerBound)...\(processingRange.upperBound)")
+        while(true) {
+
+            do {
+                upperBound = try await blockDownloaderService.getLiteWalletBlockGroup(height: lowerBound)
+            } catch {
+                await ifTaskIsNotCanceledClearCompactBlockCache(lastScannedHeight: lastScannedHeight)
+                throw error
+            }
+
+            let processingRange = lowerBound...upperBound
+
+            logger.debug("Sync range: \(processingRange.lowerBound)...\(processingRange.upperBound)")
 
             // This is important. We must be sure that no new download is executed when this Task is canceled. Without this line `stop()` doesn't
             // work.
             try Task.checkCancellation()
 
             do {
-                await blockDownloader.setDownloadLimit(processingRange.upperBound + (2 * batchSize))
-                await blockDownloader.startDownload(maxBlockBufferSize: config.downloadBufferSize)
+                await blockDownloader.setDownloadLimit(processingRange.upperBound)
+                await blockDownloader.startDownload(maxBlockBufferSize: (processingRange.upperBound - processingRange.lowerBound))
 
                 try await blockDownloader.waitUntilRequestedBlocksAreDownloaded(in: processingRange)
             } catch {
@@ -828,6 +839,11 @@ actor CompactBlockProcessor {
                 progressHeight: processingRange.upperBound
             )
             await notifyProgress(.syncing(progress))
+
+            lowerBound = upperBound + 1
+            if lowerBound > range.upperBound {
+                break
+            }
         }
     }
 

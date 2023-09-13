@@ -54,6 +54,26 @@ class LiveLatestBlockHeightProvider: LatestBlockHeightProvider {
     }
 }
 
+protocol LatestLiteWalletGroupProvider {
+    func liteWalletGroup(streamer: CompactTxStreamerAsyncClient, height: BlockHeight) async throws -> BlockHeight
+}
+
+class LiveLiteWalletGroupProvider: LatestLiteWalletGroupProvider {
+    func liteWalletGroup(streamer: CompactTxStreamerAsyncClient, height: BlockHeight) async throws -> BlockHeight {
+        do {
+            let currentBlockID = BlockID(height: height)
+            let returnBlockID = try await streamer.getLiteWalletBlockGroup(currentBlockID)
+            guard let blockHeight = Int(exactly: returnBlockID.height) else {
+                throw LightWalletServiceError.generalError(message: "error creating blockheight from BlockID \(returnBlockID)")
+            }
+            return blockHeight
+        } catch {
+            let serviceError = error.mapToServiceError()
+            throw ZcashError.serviceLatestBlockHeightFailed(serviceError)
+        }
+    }
+}
+
 class LightWalletGRPCService {
     let channel: Channel
     let connectionManager: ConnectionStatusManager
@@ -61,6 +81,7 @@ class LightWalletGRPCService {
     let singleCallTimeout: TimeLimit
     let streamingCallTimeout: TimeLimit
     var latestBlockHeightProvider: LatestBlockHeightProvider = LiveLatestBlockHeightProvider()
+    var latestLiteWalletGroupProvider: LatestLiteWalletGroupProvider = LiveLiteWalletGroupProvider()
 
     var connectionStateChange: ((_ from: ConnectionState, _ to: ConnectionState) -> Void)? {
         get { connectionManager.connectionStateChange }
@@ -158,6 +179,10 @@ extension LightWalletGRPCService: LightWalletService {
         }
     }
     
+    func getLiteWalletBlockGroup(height: BlockHeight) async throws -> BlockHeight {
+        try await latestLiteWalletGroupProvider.liteWalletGroup(streamer: compactTxStreamer, height: height)
+    }
+
     func latestBlockHeight() async throws -> BlockHeight {
         try await latestBlockHeightProvider.latestBlockHeight(streamer: compactTxStreamer)
     }

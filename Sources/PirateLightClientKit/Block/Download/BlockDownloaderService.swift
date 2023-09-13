@@ -29,6 +29,11 @@ protocol BlockDownloaderService {
     func rewind(to height: BlockHeight) async throws
 
     /**
+    Returns the highest block in next download group
+    */
+    func getLiteWalletBlockGroup(height: BlockHeight) async throws -> BlockHeight
+
+    /**
     Returns the height of the latest compact block stored locally.
     BlockHeight.empty() if no blocks are stored yet
     */
@@ -84,6 +89,10 @@ extension BlockDownloaderServiceImpl: BlockDownloaderService {
     
     func fetchUnspentTransactionOutputs(tAddress: String, startHeight: BlockHeight) -> AsyncThrowingStream<UnspentTransactionOutputEntity, Error> {
         lightwalletService.fetchUTXOs(for: tAddress, height: startHeight)
+    }
+
+    func getLiteWalletBlockGroup(height: BlockHeight) async throws -> BlockHeight {
+        try await lightwalletService.getLiteWalletBlockGroup(height: height)
     }
     
     func latestBlockHeight() async throws -> BlockHeight {

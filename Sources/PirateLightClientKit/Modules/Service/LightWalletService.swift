@@ -157,6 +157,9 @@ protocol LightWalletService: AnyObject {
     /// - Throws: `serviceLatestBlockHeightFailed` when GRPC call fails.
     func latestBlock() async throws -> BlockID
 
+    /// Return the highest block in the next download group.
+    func getLiteWalletBlockGroup(height: BlockHeight) async throws -> BlockHeight
+
     /// Return the latest block height known to the service.
     /// - Throws: `serviceLatestBlockFailed` when GRPC call fails.
     func latestBlockHeight() async throws -> BlockHeight
