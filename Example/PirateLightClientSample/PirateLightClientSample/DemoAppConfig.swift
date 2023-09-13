@@ -20,7 +20,7 @@ enum DemoAppConfig {
 
     static let host = PirateSDK.isMainnet ? "lightd1.pirate.black" : "lightd1.pirate.black"
     static let port: Int = 443
-    static let defaultBirthdayHeight: BlockHeight = PirateSDK.isMainnet ? 800000 : 800000
+    static let defaultBirthdayHeight: BlockHeight = PirateSDK.isMainnet ? 2600000 : 800000
     static let defaultSeed = try! Mnemonic.deterministicSeedBytes(from: """
     view yellow sponsor daring tiny exercise method connect neutral genuine piano fresh virtual loyal entry bird nerve cliff axis image toe sausage duck elephant
     """)

@@ -80,8 +80,8 @@ class SendViewController: UIViewController {
 
     func setUp() {
         Task { @MainActor in
-            balanceLabel.text = format(balance: (try? await synchronizer.getShieldedBalance(accountIndex: 0)) ?? .zero)
-            verifiedBalanceLabel.text = format(balance: (try? await synchronizer.getShieldedVerifiedBalance(accountIndex: 0)) ?? .zero)
+            balanceLabel.text = (try? await synchronizer.getShieldedBalance(accountIndex: 0).decimalString()) ?? "0.0"
+            verifiedBalanceLabel.text = (try? await synchronizer.getShieldedVerifiedBalance(accountIndex: 0).decimalString()) ?? "0.0"
             await toggleSendButton()
         }
         memoField.text = ""

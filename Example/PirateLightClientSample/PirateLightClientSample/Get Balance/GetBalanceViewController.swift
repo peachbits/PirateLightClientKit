@@ -16,13 +16,13 @@ class GetBalanceViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let synchronizer = AppDelegate.shared.sharedSynchronizer
-        self.title = "Account 0 Balance"
+        self.title = "Account Balance"
 
         Task { @MainActor in
-            let balanceText = (try? await synchronizer.getShieldedBalance().formattedString) ?? "0.0"
-            let verifiedText = (try? await synchronizer.getShieldedVerifiedBalance().formattedString) ?? "0.0"
-            self.balance.text = "\(balanceText) ZEC"
-            self.verified.text = "\(verifiedText) ZEC"
+            let balanceText = (try? await synchronizer.getShieldedBalance().decimalString()) ?? "0.0"
+            let verifiedText = (try? await synchronizer.getShieldedVerifiedBalance().decimalString()) ?? "0.0"
+            self.balance.text = "\(balanceText) ARRR"
+            self.verified.text = "\(verifiedText) ARRR"
         }
     }
 }
