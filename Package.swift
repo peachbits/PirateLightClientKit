@@ -16,7 +16,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.14.0"),
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.14.1"),
-        .package(url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", from: "0.3.1")
+        .package(url: "https://github.com/piratenetwork/pirate-light-client-ffi.git", revision: "b07e6fb619a8f0eadd344f4e0d3e81d8a7a0a33a")
     ],
     targets: [
         .target(
