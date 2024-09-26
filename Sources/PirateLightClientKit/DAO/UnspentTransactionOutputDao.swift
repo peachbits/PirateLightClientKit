@@ -69,14 +69,14 @@ extension UnspentTransactionOutputEntity {
 import SQLite
 class UnspentTransactionOutputSQLDAO: UnspentTransactionOutputRepository {
     enum TableColumns {
-        static let id = Expression<Int>("id_utxo")
-        static let address = Expression<String>("address")
-        static let txid = Expression<Blob>("prevout_txid")
-        static let index = Expression<Int>("prevout_idx")
-        static let script = Expression<Blob>("script")
-        static let valueZat = Expression<Int>("value_zat")
-        static let height = Expression<Int>("height")
-        static let spentInTx = Expression<Int?>("spent_in_tx")
+        static let id = SQLite.Expression<Int>("id_utxo")
+        static let address = SQLite.Expression<String>("address")
+        static let txid = SQLite.Expression<Blob>("prevout_txid")
+        static let index = SQLite.Expression<Int>("prevout_idx")
+        static let script = SQLite.Expression<Blob>("script")
+        static let valueZat = SQLite.Expression<Int>("value_zat")
+        static let height = SQLite.Expression<Int>("height")
+        static let spentInTx = SQLite.Expression<Int?>("spent_in_tx")
     }
 
     let table = Table("utxos")

@@ -24,10 +24,10 @@ struct Block: Codable {
     }
 
     enum TableStructure {
-        static let height = Expression<Int>(Block.CodingKeys.height.rawValue)
-        static let hash = Expression<Blob>(Block.CodingKeys.hash.rawValue)
-        static let time = Expression<Int>(Block.CodingKeys.time.rawValue)
-        static let saplingTree = Expression<Blob>(Block.CodingKeys.saplingTree.rawValue)
+        static let height = SQLite.Expression<Int>(Block.CodingKeys.height.rawValue)
+        static let hash = SQLite.Expression<Blob>(Block.CodingKeys.hash.rawValue)
+        static let time = SQLite.Expression<Int>(Block.CodingKeys.time.rawValue)
+        static let saplingTree = SQLite.Expression<Blob>(Block.CodingKeys.saplingTree.rawValue)
     }
 
     let height: BlockHeight
@@ -41,7 +41,7 @@ struct Block: Codable {
 class BlockSQLDAO: BlockDao {
     let dbProvider: ConnectionProvider
     let table: Table
-    let height = Expression<Int>("height")
+    let height = SQLite.Expression<Int>("height")
 
     init(dbProvider: ConnectionProvider) {
         self.dbProvider = dbProvider

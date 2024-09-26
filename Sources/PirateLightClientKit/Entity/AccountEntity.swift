@@ -47,8 +47,8 @@ protocol AccountRepository {
 
 class AccountSQDAO: AccountRepository {
     enum TableColums {
-        static let account = Expression<Int>("account")
-        static let extfvk = Expression<String>("ufvk")
+        static let account = SQLite.Expression<Int>("account")
+        static let extfvk = SQLite.Expression<String>("ufvk")
     }
 
     let table = Table("accounts")
